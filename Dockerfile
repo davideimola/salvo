@@ -12,9 +12,6 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
 # Distroless, non-root. The migrations are embedded in the binary: `salvo migrate`.
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/salvo /salvo
-# The old name, for deployments that still run `/newsletter-svc migrate`. Drop it once they
-# call `/salvo`.
-COPY --from=build /out/salvo /newsletter-svc
 USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/salvo"]

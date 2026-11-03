@@ -184,5 +184,4 @@ go test ./...
 ```
 
 Every push to `main` publishes `ghcr.io/<owner>/<repository>:main-<sha>-<timestamp>`, the tag
-shape Flux's image automation sorts by. The image's entrypoint is `/salvo`; `/newsletter-svc`
-is the same binary under its old name, kept until the deployments that call it are updated.
+shape Flux's image automation sorts by. The image's entrypoint is `/salvo`.

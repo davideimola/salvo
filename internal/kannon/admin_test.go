@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/kannon"
+	"github.com/davideimola/salvo/internal/kannon"
 )
 
 func TestAdminReadsStatsAndTracking(t *testing.T) {

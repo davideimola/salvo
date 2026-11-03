@@ -11,6 +11,17 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+// The mark's small cut, a copy of assets/favicon.svg: go:embed cannot reach outside the package.
+//
+//go:embed static/favicon.svg
+var faviconSVG []byte
+
+func favicon(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Write(faviconSVG)
+}
+
 // Each page is parsed together with the layout, into a set of its own, so every page can
 // define the same `content` block.
 var pages = func() map[string]*template.Template {
@@ -34,7 +45,7 @@ var pages = func() map[string]*template.Template {
 		},
 	}
 	out := map[string]*template.Template{}
-	for _, name := range []string{"message", "unsubscribe", "home", "subscribers", "subscriber", "issue"} {
+	for _, name := range []string{"message", "signin", "unsubscribe", "home", "subscribers", "subscriber", "issue"} {
 		out[name] = template.Must(template.New("").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/delivery.html", "templates/"+name+".html"))
 	}
 	return out
@@ -44,7 +55,7 @@ func (s *Server) page(w http.ResponseWriter, status int, name string, data map[s
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	// The issue page frames its own preview, and nothing else may frame anything here.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.WriteHeader(status)
 	if err := pages[name].ExecuteTemplate(w, "layout", data); err != nil {
 		slog.Error("template", "name", name, "err", err)

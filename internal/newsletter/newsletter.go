@@ -24,8 +24,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/kannon"
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/kannon"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 const (

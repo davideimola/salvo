@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 const pageSize = 50

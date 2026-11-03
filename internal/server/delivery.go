@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/kannon"
+	"github.com/davideimola/salvo/internal/kannon"
 )
 
 // Delivery is what the admin pages read from Kannon: aggregated counters and the Domain's

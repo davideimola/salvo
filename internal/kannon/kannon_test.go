@@ -10,7 +10,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/davideimola/newsletter-svc/internal/kannon"
+	"github.com/davideimola/salvo/internal/kannon"
 )
 
 func TestSendSpeaksKannonsJSON(t *testing.T) {

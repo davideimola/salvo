@@ -4,11 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>{{if .Admin}}Newsletter admin{{else}}{{.Title}}{{end}}</title>
+<title>{{if .Admin}}Salvo{{else}}{{.Title}}{{end}}</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  :root { --bg:#F7F5F0; --fg:#1C2233; --body:#2A3042; --muted:#5B6070; --border:#DEDCD5; --surface:#FFFFFF; --inline:#EDEAE3; --accent:#C91F37; }
+  /* Salvo's ink and paper, and the spark of its mark. The spark is for the mark and for focus,
+     never for text on paper, where it would be too faint to read. */
+  :root { --bg:#F6F3EC; --fg:#1E1F24; --body:#2E3038; --muted:#6B6A66; --border:#E2DED4; --surface:#FFFFFF; --inline:#EFEBE2; --accent:#9A5B00; --spark:#F2A93B; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#13151C; --fg:#ECE9E2; --body:#D6D3CC; --muted:#8E8C86; --border:#2C3040; --surface:#1B1E27; --inline:#262A35; --accent:#E0475C; }
+    :root { --bg:#14161B; --fg:#F1EFEA; --body:#D8D5CE; --muted:#8F8C85; --border:#2B2E36; --surface:#1C1F26; --inline:#262A33; --accent:#F6B44F; --spark:#F6B44F; }
   }
   * { box-sizing: border-box; }
   body { margin:0; background:var(--bg); color:var(--body); font:16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
@@ -22,7 +25,8 @@
   .mono, code, td.mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
   .muted { color: var(--muted); }
   nav { display:flex; flex-wrap:wrap; gap: 8px 20px; align-items:center; border-bottom:1px solid var(--border); padding-bottom: 12px; margin-bottom: 24px; }
-  nav .brand { font-weight:700; color:var(--fg); text-decoration:none; }
+  nav .brand { display:inline-flex; align-items:center; gap:8px; font-weight:700; color:var(--fg); text-decoration:none; }
+  nav .brand svg { width:24px; height:24px; }
   nav .spacer { flex:1; }
   nav form { margin:0; }
   .stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
@@ -42,14 +46,29 @@
   dl { display:grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
   dt { color: var(--muted); }
   dd { margin: 0; }
+  a:focus-visible, button:focus-visible { outline: 3px solid var(--spark); outline-offset: 2px; }
+
+  /* The sign-in: one card in the middle of the page. */
+  main.center { min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding: 32px 16px; }
+  .card { width:100%; max-width: 400px; background:var(--surface); border:1px solid var(--border); border-radius: 16px; padding: 40px 32px 32px; text-align:center; box-shadow: 0 1px 2px rgba(20,22,27,.04), 0 12px 32px -12px rgba(20,22,27,.12); }
+  .card .mark { width:64px; height:64px; color:var(--fg); margin: 0 auto 16px; display:block; }
+  .card h1 { font-size: 22px; margin: 0 0 8px; }
+  .card p { margin: 0 0 24px; color: var(--muted); font-size: 15px; }
+  .card .google { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding: 11px 16px; border-radius: 10px; font-weight:600; }
+  .card .google svg { width:18px; height:18px; background:#fff; border-radius:50%; padding:2px; box-sizing:content-box; }
+  .card .google:hover { color: var(--bg); opacity: .92; }
+  .card .alt { display:inline-block; margin-top: 16px; font-size: 14px; color: var(--muted); }
+  .card .alt:hover { color: var(--fg); }
+  .tagline { margin-top: 20px; font-size: 13px; color: var(--muted); display:flex; align-items:center; gap:6px; }
+  .tagline svg { width:16px; height:16px; color: var(--muted); }
   iframe { width: 100%; height: 720px; border: 1px solid var(--border); background: #fff; }
 </style>
 </head>
 <body>
-<main{{if not .Admin}} class="narrow"{{end}}>
+<main class="{{if .Admin}}{{else if .Center}}center{{else}}narrow{{end}}">
 {{if .Admin}}
 <nav>
-  <a class="brand" href="/admin">Newsletter</a>
+  <a class="brand" href="/admin">{{template "mark"}}Salvo</a>
   <a href="/admin/subscribers">Subscribers</a>
   <span class="spacer"></span>
   <span class="muted mono">{{.Owner}}</span>
@@ -60,3 +79,6 @@
 </main>
 </body>
 </html>{{end}}
+
+{{/* The mark, drawn in currentColor with the spark in --spark: an S drawn as a lit fuse. */}}
+{{define "mark"}}<svg class="mark" viewBox="0 0 120 120" aria-hidden="true"><g transform="translate(-12 7)"><path d="M77.3 32 A20 20 0 1 0 60 62 A20 20 0 1 1 42.7 92" fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round"/><circle cx="77.3" cy="32" r="11" fill="currentColor"/><path d="M80.1 16.2 L81.7 7.4 M89.6 21.7 L96.5 15.9 M93.3 32 L102.3 32" style="stroke:var(--spark)" stroke-width="6" stroke-linecap="round"/></g></svg>{{end}}

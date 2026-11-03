@@ -7,11 +7,14 @@ RUN go mod download
 COPY . .
 ARG TARGETOS TARGETARCH
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags="-s -w" -o /out/newsletter-svc ./cmd/newsletter-svc
+    go build -trimpath -ldflags="-s -w" -o /out/salvo ./cmd/salvo
 
-# Distroless, non-root. The migrations are embedded in the binary: `newsletter-svc migrate`.
+# Distroless, non-root. The migrations are embedded in the binary: `salvo migrate`.
 FROM gcr.io/distroless/static-debian12:nonroot
-COPY --from=build /out/newsletter-svc /newsletter-svc
+COPY --from=build /out/salvo /salvo
+# The old name, for deployments that still run `/newsletter-svc migrate`. Drop it once they
+# call `/salvo`.
+COPY --from=build /out/salvo /newsletter-svc
 USER 65532:65532
 EXPOSE 8080
-ENTRYPOINT ["/newsletter-svc"]
+ENTRYPOINT ["/salvo"]

@@ -18,9 +18,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/davideimola/newsletter-svc/internal/newsletter"
-	"github.com/davideimola/newsletter-svc/internal/owner"
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/newsletter"
+	"github.com/davideimola/salvo/internal/owner"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 type Server struct {
@@ -35,14 +35,17 @@ type Server struct {
 func New(svc *newsletter.Service, gate *owner.Gate, apiKey string) *Server {
 	s := &Server{svc: svc, gate: gate, apiKey: apiKey, mux: http.NewServeMux()}
 	gate.Denied = func(w http.ResponseWriter, r *http.Request, email string) {
-		s.page(w, http.StatusForbidden, "message", map[string]any{
-			"Title": "Not this account",
-			"Body":  "You signed in as " + email + ", which is not the owner of this newsletter.",
+		s.page(w, http.StatusForbidden, "signin", map[string]any{
+			"Center":     true,
+			"Title":      "Not this account",
+			"Body":       "You signed in as " + email + ", which is not the owner of this newsletter.",
+			"SignInText": "Use another Google account",
 		})
 	}
 
 	s.mux.HandleFunc("GET /healthz", s.healthz)
 	s.mux.HandleFunc("GET /{$}", s.home)
+	s.mux.HandleFunc("GET /favicon.svg", favicon)
 
 	s.mux.Handle("POST /api/subscribers", s.api(s.apiSubscribe))
 	s.mux.Handle("PUT /api/issues/{slug}", s.api(s.apiSaveIssue))
@@ -80,11 +83,12 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
-	s.page(w, http.StatusOK, "message", map[string]any{
-		"Title": "Davide Imola's newsletter",
-		"Body":  "This is the server behind it. The newsletter itself lives on the website.",
-		"Link":  s.svc.SiteURL + "/newsletter", "LinkText": "Go to the newsletter",
-		"SignIn": true,
+	s.page(w, http.StatusOK, "signin", map[string]any{
+		"Center": true,
+		"Title":  "Davide Imola's newsletter",
+		"Body":   "This is the server behind it. The newsletter itself lives on the website.",
+		"Link":   s.svc.SiteURL + "/newsletter", "LinkText": "Go to the newsletter",
+		"SignInText": "Sign in with Google",
 	})
 }
 

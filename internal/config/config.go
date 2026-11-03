@@ -29,6 +29,15 @@ type Config struct {
 	// TestRecipient receives every test send.
 	TestRecipient string
 
+	// What readers see of the newsletter, all optional (newsletter.Identity).
+	NewsletterName    string
+	NewsletterAbout   string
+	NewsletterSignOff string
+	ConfirmSubject    string
+	SubscribeURL      string
+	ConfirmedURL      string
+	PrivacyURL        string
+
 	OwnerEmail         string
 	GoogleClientID     string
 	GoogleClientSecret string
@@ -64,6 +73,13 @@ func FromEnv() (*Config, error) {
 		SenderEmail:        get("SENDER_EMAIL"),
 		SenderName:         get("SENDER_NAME"),
 		TestRecipient:      get("TEST_RECIPIENT"),
+		NewsletterName:     opt("NEWSLETTER_NAME", ""),
+		NewsletterAbout:    opt("NEWSLETTER_ABOUT", ""),
+		NewsletterSignOff:  opt("NEWSLETTER_SIGNOFF", ""),
+		ConfirmSubject:     opt("CONFIRM_SUBJECT", ""),
+		SubscribeURL:       opt("SUBSCRIBE_URL", ""),
+		ConfirmedURL:       opt("CONFIRMED_URL", ""),
+		PrivacyURL:         opt("PRIVACY_URL", ""),
 		OwnerEmail:         get("OWNER_EMAIL"),
 		GoogleClientID:     get("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: get("GOOGLE_CLIENT_SECRET"),
@@ -90,6 +106,15 @@ func (c *Config) validate() error {
 		u, err := url.Parse(v)
 		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.Path != "" {
 			errs = append(errs, fmt.Errorf("%s must be an origin like https://example.com, got %q", name, v))
+		}
+	}
+	for name, v := range map[string]string{"SUBSCRIBE_URL": c.SubscribeURL, "CONFIRMED_URL": c.ConfirmedURL, "PRIVACY_URL": c.PrivacyURL} {
+		if v == "" {
+			continue
+		}
+		u, err := url.Parse(v)
+		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") {
+			errs = append(errs, fmt.Errorf("%s must be an absolute URL like https://example.com/page, got %q", name, v))
 		}
 	}
 	if len(c.APIKey) < 32 {

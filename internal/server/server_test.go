@@ -145,8 +145,12 @@ func TestSubscribeConfirmUnsubscribe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != "https://example.com/newsletter/confirmed" {
+	// With no CONFIRMED_URL, the reader lands on Salvo's own page.
+	if r.StatusCode != http.StatusSeeOther || r.Header.Get("Location") != "https://news.example.com/confirmed" {
 		t.Fatalf("confirm: %d -> %s", r.StatusCode, r.Header.Get("Location"))
+	}
+	if page, _ := http.Get(e.srv.URL + "/confirmed"); page.StatusCode != http.StatusOK || !strings.Contains(read(t, page), "Back to example.com") {
+		t.Errorf("confirmed page: %d", page.StatusCode)
 	}
 	if r, _ := http.Get(e.srv.URL + "/confirm?token=bogus"); r.StatusCode != http.StatusNotFound {
 		t.Errorf("bogus confirm: %d", r.StatusCode)

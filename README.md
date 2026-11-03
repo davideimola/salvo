@@ -127,7 +127,8 @@ it. When the test looks right, open `/admin` and send it.
 | `POST /api/subscribers` `{"email"}` | website, `Authorization: Bearer API_KEY` | start the double opt-in; `202` whatever the address's state, `400` for an invalid address |
 | `PUT /api/issues/{slug}` `{"subject","html"}` | website | save or replace a draft; the HTML must contain `{{ unsubscribe_url }}` |
 | `POST /api/issues/{slug}/test` | website | send the draft to `TEST_RECIPIENT` |
-| `GET /confirm?token=` | reader | confirm, then redirect to `SITE_URL/newsletter/confirmed` |
+| `GET /confirm?token=` | reader | confirm, then redirect to `CONFIRMED_URL` |
+| `GET /confirmed` | reader | Salvo's own "you're in" page, where `CONFIRMED_URL` points by default |
 | `GET /unsubscribe?token=` | reader | a page with an Unsubscribe button |
 | `POST /unsubscribe?token=` | reader, mail client | unsubscribe; `List-Unsubscribe=One-Click` is the RFC 8058 form |
 | `/admin` | owner, signed in with Google | subscribers, issues, preview, test, send, delete, delivery counters |
@@ -135,7 +136,8 @@ it. When the test looks right, open `/admin` and send it.
 
 ## Configuration
 
-Environment variables. All are required except `LISTEN_ADDR` and `KANNON_ADMIN_TOKEN`.
+Environment variables. All are required except `LISTEN_ADDR`, `KANNON_ADMIN_TOKEN` and the
+ones under [What readers see](#what-readers-see).
 
 | Variable | What it is |
 |---|---|
@@ -154,6 +156,23 @@ Environment variables. All are required except `LISTEN_ADDR` and `KANNON_ADMIN_T
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | the OAuth client for `/admin` |
 | `SESSION_KEY` | signs the admin session cookie, at least 32 characters |
 
+### What readers see
+
+All optional. Left empty, each has a default that reads well for any newsletter.
+
+| Variable | What it is | Default |
+|---|---|---|
+| `NEWSLETTER_NAME` | the newsletter's name, e.g. `Ada's notes`: the home page's title, and the subject below | `SENDER_NAME` |
+| `NEWSLETTER_ABOUT` | a sentence or two on what it is, in the confirmation email | none |
+| `NEWSLETTER_SIGNOFF` | the line that closes the confirmation email, e.g. `Ada` | none |
+| `CONFIRM_SUBJECT` | the confirmation email's subject | `Confirm your subscription to NEWSLETTER_NAME` |
+| `SUBSCRIBE_URL` | where your subscribe form is, for "Subscribe again" | `SITE_URL` |
+| `CONFIRMED_URL` | where a reader lands after confirming | `PUBLIC_URL/confirmed` |
+| `PRIVACY_URL` | your privacy notice, linked from the confirmation email | no link |
+
+The confirmation email always opens with `SENDER_NAME` and always says the newsletter carries
+no tracking pixel and no tracked links.
+
 ## Commands
 
 ```sh
@@ -165,14 +184,12 @@ salvo import-kit < export.csv  # add Kit's active subscribers as confirmed, once
 
 ## Status
 
-Salvo runs one real newsletter, and some of it is still shaped around that one: the
-confirmation email's copy and a few page titles are written for davideimola.dev. Next, in
-order:
+Salvo runs one real newsletter, davideimola.dev's, and everything that newsletter says
+about itself is configuration now. Next, in order:
 
-1. Copy and branding set by configuration rather than in code.
-2. A hosted subscribe form, for when you have no website backend of your own.
-3. Dashboards: list growth, and deliveries and bounces per issue.
-4. Opt-in tracking, per reader. Kannon can set a tracking policy for each recipient, and Salvo
+1. A hosted subscribe form, for when you have no website backend of your own.
+2. Dashboards: list growth, and deliveries and bounces per issue.
+3. Opt-in tracking, per reader. Kannon can set a tracking policy for each recipient, and Salvo
    is where the consent would live, with its proof and a way to withdraw it while still
    receiving the newsletter. Off unless you turn it on, and then only for readers who said yes.
 

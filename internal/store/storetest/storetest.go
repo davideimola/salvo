@@ -15,7 +15,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 const defaultURL = "postgres://postgres:test@127.0.0.1:55432/newsletter?sslmode=disable"

@@ -1,12 +1,12 @@
-// Command newsletter-svc keeps davideimola.dev's newsletter subscribers and sends the issues
-// through Kannon. See README.md.
+// Command salvo keeps a newsletter's subscribers and sends its issues through Kannon,
+// without a tracking pixel. See README.md.
 //
-//	newsletter-svc            serve (the default)
-//	newsletter-svc migrate    apply the database migrations and exit
-//	newsletter-svc erase EMAIL
-//	                          delete one address and everything stored about it
-//	newsletter-svc import-kit < export.csv
-//	                          add Kit's active subscribers as confirmed
+//	salvo            serve (the default)
+//	salvo migrate    apply the database migrations and exit
+//	salvo erase EMAIL
+//	                 delete one address and everything stored about it
+//	salvo import-kit < export.csv
+//	                 add Kit's active subscribers as confirmed
 package main
 
 import (
@@ -21,12 +21,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/config"
-	"github.com/davideimola/newsletter-svc/internal/kannon"
-	"github.com/davideimola/newsletter-svc/internal/newsletter"
-	"github.com/davideimola/newsletter-svc/internal/owner"
-	"github.com/davideimola/newsletter-svc/internal/server"
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/config"
+	"github.com/davideimola/salvo/internal/kannon"
+	"github.com/davideimola/salvo/internal/newsletter"
+	"github.com/davideimola/salvo/internal/owner"
+	"github.com/davideimola/salvo/internal/server"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 		err = migrate(ctx)
 	case "erase":
 		if len(os.Args) != 3 {
-			err = errors.New("usage: newsletter-svc erase EMAIL")
+			err = errors.New("usage: salvo erase EMAIL")
 			break
 		}
 		err = erase(ctx, os.Args[2])
@@ -107,7 +107,7 @@ func erase(ctx context.Context, raw string) error {
 }
 
 // importKit reads Kit's subscriber export on stdin, so the file never has to be copied into
-// the container: `kubectl exec -i ... -- /newsletter-svc import-kit < export.csv`.
+// the container: `kubectl exec -i ... -- /salvo import-kit < export.csv`.
 func importKit(ctx context.Context) error {
 	st, err := openStore(ctx)
 	if err != nil {

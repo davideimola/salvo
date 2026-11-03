@@ -1,4 +1,4 @@
-module github.com/davideimola/newsletter-svc
+module github.com/davideimola/salvo
 
 go 1.25.6
 

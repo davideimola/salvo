@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/owner"
+	"github.com/davideimola/salvo/internal/owner"
 )
 
 type provider struct{}

@@ -14,12 +14,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/kannon"
-	"github.com/davideimola/newsletter-svc/internal/newsletter"
-	"github.com/davideimola/newsletter-svc/internal/owner"
-	"github.com/davideimola/newsletter-svc/internal/server"
-	"github.com/davideimola/newsletter-svc/internal/store"
-	"github.com/davideimola/newsletter-svc/internal/store/storetest"
+	"github.com/davideimola/salvo/internal/kannon"
+	"github.com/davideimola/salvo/internal/newsletter"
+	"github.com/davideimola/salvo/internal/owner"
+	"github.com/davideimola/salvo/internal/server"
+	"github.com/davideimola/salvo/internal/store"
+	"github.com/davideimola/salvo/internal/store/storetest"
 )
 
 const (

@@ -18,9 +18,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/davideimola/newsletter-svc/internal/newsletter"
-	"github.com/davideimola/newsletter-svc/internal/owner"
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/newsletter"
+	"github.com/davideimola/salvo/internal/owner"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 type Server struct {

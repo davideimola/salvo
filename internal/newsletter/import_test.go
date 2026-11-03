@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/davideimola/newsletter-svc/internal/store"
+	"github.com/davideimola/salvo/internal/store"
 )
 
 const kitExport = "\uFEFFfirst_name,email,created_at,status,tags,city,state,country\n" +

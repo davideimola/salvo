@@ -371,3 +371,24 @@ func TestNoDeliveryPanelWithoutTheToken(t *testing.T) {
 		t.Error("a delivery panel with nothing to read it from")
 	}
 }
+
+func TestSignInPage(t *testing.T) {
+	e := setup(t)
+	r, _ := noRedirect().Get(e.srv.URL + "/")
+	body := read(t, r)
+	if r.StatusCode != http.StatusOK || !strings.Contains(body, `href="/auth/login"`) {
+		t.Fatalf("home: %d, no sign-in link in\n%s", r.StatusCode, body)
+	}
+	// A link, not a form: CSP's form-action would stop a form's redirect at Google's door.
+	if strings.Contains(body, "<form") {
+		t.Error("the sign-in page has a form")
+	}
+	if !strings.Contains(body, `href="/favicon.svg"`) {
+		t.Error("no favicon")
+	}
+
+	f, _ := noRedirect().Get(e.srv.URL + "/favicon.svg")
+	if f.StatusCode != http.StatusOK || f.Header.Get("Content-Type") != "image/svg+xml" || !strings.Contains(read(t, f), "<svg") {
+		t.Errorf("favicon: %d %s", f.StatusCode, f.Header.Get("Content-Type"))
+	}
+}

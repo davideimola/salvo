@@ -185,3 +185,8 @@ go test ./...
 
 Every push to `main` publishes `ghcr.io/<owner>/<repository>:main-<sha>-<timestamp>`, the tag
 shape Flux's image automation sorts by. The image's entrypoint is `/salvo`.
+
+## License
+
+[Apache License 2.0](LICENSE), like Kannon. The mark and the wordmark in `assets/` are covered
+by it too.

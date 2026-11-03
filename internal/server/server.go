@@ -52,6 +52,7 @@ func New(svc *newsletter.Service, gate *owner.Gate, apiKey string) *Server {
 	s.mux.Handle("POST /api/issues/{slug}/test", s.api(s.apiTestIssue))
 
 	s.mux.HandleFunc("GET /confirm", s.confirm)
+	s.mux.HandleFunc("GET /confirmed", s.confirmed)
 	s.mux.HandleFunc("GET /unsubscribe", s.unsubscribePage)
 	s.mux.HandleFunc("POST /unsubscribe", s.unsubscribe)
 
@@ -83,11 +84,13 @@ func (s *Server) home(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/admin", http.StatusFound)
 		return
 	}
+	id := s.svc.Identity()
 	s.page(w, http.StatusOK, "signin", map[string]any{
-		"Center": true,
-		"Title":  "Davide Imola's newsletter",
-		"Body":   "This is the server behind it. The newsletter itself lives on the website.",
-		"Link":   s.svc.SiteURL + "/newsletter", "LinkText": "Go to the newsletter",
+		"Center":     true,
+		"Title":      id.Name,
+		"Body":       "This is the server behind it. The newsletter itself lives on the website.",
+		"Link":       id.SubscribeURL,
+		"LinkText":   "Go to the newsletter",
 		"SignInText": "Sign in with Google",
 	})
 }
@@ -224,25 +227,35 @@ func (s *Server) confirm(w http.ResponseWriter, r *http.Request) {
 	err := s.svc.Confirm(r.Context(), r.URL.Query().Get("token"))
 	switch {
 	case err == nil:
-		http.Redirect(w, r, s.svc.SiteURL+"/newsletter/confirmed", http.StatusSeeOther)
+		http.Redirect(w, r, s.svc.Identity().ConfirmedURL, http.StatusSeeOther)
 	case errors.Is(err, newsletter.ErrExpiredLink):
 		s.page(w, http.StatusGone, "message", map[string]any{
 			"Title": "This link has expired",
 			"Body":  "Confirmation links work for seven days. Subscribe again and a new one will reach you.",
-			"Link":  s.svc.SiteURL + "/newsletter", "LinkText": "Subscribe again",
+			"Link":  s.svc.Identity().SubscribeURL, "LinkText": "Subscribe again",
 		})
 	case errors.Is(err, newsletter.ErrInvalidLink):
 		s.page(w, http.StatusNotFound, "message", map[string]any{
 			"Title": "This link does not work",
 			"Body":  "It may have been copied only in part, or replaced by a newer one.",
-			"Link":  s.svc.SiteURL + "/newsletter", "LinkText": "Subscribe again",
+			"Link":  s.svc.Identity().SubscribeURL, "LinkText": "Subscribe again",
 		})
 	default:
 		slog.Error("confirm", "err", err)
 		s.page(w, http.StatusInternalServerError, "message", map[string]any{
-			"Title": "Something went wrong", "Body": "It is on my side. Try the link again in a moment.",
+			"Title": "Something went wrong", "Body": "The problem is on this end, not yours. Try the link again in a moment.",
 		})
 	}
+}
+
+// confirmed is where a confirmed reader lands when the newsletter has no page of its own for
+// it (CONFIRMED_URL).
+func (s *Server) confirmed(w http.ResponseWriter, r *http.Request) {
+	s.page(w, http.StatusOK, "message", map[string]any{
+		"Title": "You're in",
+		"Body":  "Your subscription to " + s.svc.Identity().Name + " is confirmed. The next issue will reach you.",
+		"Link":  s.svc.SiteURL, "LinkText": "Back to " + s.svc.SiteName(),
+	})
 }
 
 func (s *Server) unsubscribePage(w http.ResponseWriter, r *http.Request) {
@@ -262,7 +275,7 @@ func (s *Server) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 	if sub.Status != store.Confirmed {
 		s.page(w, http.StatusOK, "message", map[string]any{
 			"Title": "You are not subscribed",
-			"Body":  sub.Email + " receives no newsletter from me.",
+			"Body":  sub.Email + " is not on the list, so no issue goes to it.",
 		})
 		return
 	}
@@ -298,7 +311,7 @@ func (s *Server) unsubscribe(w http.ResponseWriter, r *http.Request) {
 	s.page(w, http.StatusOK, "message", map[string]any{
 		"Title": "You are unsubscribed",
 		"Body":  "No more issues will reach you. Thank you for reading.",
-		"Link":  s.svc.SiteURL, "LinkText": "Back to davideimola.dev",
+		"Link":  s.svc.SiteURL, "LinkText": "Back to " + s.svc.SiteName(),
 	})
 }
 
@@ -306,12 +319,12 @@ func (s *Server) invalidUnsubscribe(w http.ResponseWriter, err error) {
 	if errors.Is(err, newsletter.ErrInvalidLink) {
 		s.page(w, http.StatusNotFound, "message", map[string]any{
 			"Title": "This link does not work",
-			"Body":  "It may have been copied only in part. Reply to any issue and I will remove you by hand.",
+			"Body":  "It may have been copied only in part. Reply to any issue to be removed by hand.",
 		})
 		return
 	}
 	slog.Error("unsubscribe", "err", err)
 	s.page(w, http.StatusInternalServerError, "message", map[string]any{
-		"Title": "Something went wrong", "Body": "It is on my side. Try the link again in a moment.",
+		"Title": "Something went wrong", "Body": "The problem is on this end, not yours. Try the link again in a moment.",
 	})
 }

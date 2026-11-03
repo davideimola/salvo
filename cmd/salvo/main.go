@@ -144,7 +144,17 @@ func serve(ctx context.Context) error {
 		PublicURL:     cfg.PublicURL,
 		SiteURL:       cfg.SiteURL,
 		TestRecipient: cfg.TestRecipient,
-		Now:           time.Now,
+		Ident: newsletter.Identity{
+			Name:           cfg.NewsletterName,
+			Sender:         cfg.SenderName,
+			About:          cfg.NewsletterAbout,
+			SignOff:        cfg.NewsletterSignOff,
+			ConfirmSubject: cfg.ConfirmSubject,
+			SubscribeURL:   cfg.SubscribeURL,
+			ConfirmedURL:   cfg.ConfirmedURL,
+			PrivacyURL:     cfg.PrivacyURL,
+		},
+		Now: time.Now,
 	}
 	google, err := owner.NewGoogle(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/auth/callback")
 	if err != nil {

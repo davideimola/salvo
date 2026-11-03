@@ -57,7 +57,9 @@ type Service struct {
 	SiteURL string
 	// TestRecipient receives the test sends.
 	TestRecipient string
-	Now           func() time.Time
+	// Ident is who the newsletter is; read it through Identity, which fills in the defaults.
+	Ident Identity
+	Now   func() time.Time
 }
 
 // NormalizeEmail returns the address as it is stored, or ErrInvalidEmail.
@@ -257,12 +259,13 @@ func (s *Service) unsubscribeURL(token string) string {
 }
 
 func (s *Service) sendConfirmation(ctx context.Context, email, token string) error {
-	html, err := renderConfirmation(s.PublicURL+"/confirm?token="+token, s.SiteURL)
+	id := s.Identity()
+	html, err := renderConfirmation(id, s.PublicURL+"/confirm?token="+token)
 	if err != nil {
 		return err
 	}
 	_, err = s.Mailer.Send(ctx, kannon.Message{
-		Subject:    confirmationSubject,
+		Subject:    id.ConfirmSubject,
 		HTML:       html,
 		Recipients: []kannon.Recipient{{Email: email}},
 	})

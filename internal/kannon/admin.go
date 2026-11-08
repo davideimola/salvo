@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 // Admin reads from Kannon's Admin and Stats APIs, for the delivery panel on the admin pages.
@@ -55,7 +57,15 @@ func (a *Admin) AggregatedStats(ctx context.Context, domain string, from, to tim
 	return out, nil
 }
 
-// Tracking is a Domain's Tracking Policy, as Kannon names the modes (TRACKING_MODE_OFF, ...).
+// The Tracking Modes, as Kannon names them on the wire. Salvo only ever asks for these two
+// (ADR 0002); a Domain may report others.
+const (
+	ModeOff          = "TRACKING_MODE_OFF"
+	ModePseudonymous = "TRACKING_MODE_PSEUDONYMOUS"
+)
+
+// Tracking is a Tracking Policy, a Domain's, a batch's or a recipient's, as Kannon names the
+// modes (TRACKING_MODE_OFF, ...).
 type Tracking struct {
 	Opens string `json:"opens"`
 	Links string `json:"links"`
@@ -63,7 +73,35 @@ type Tracking struct {
 
 // Off reports whether neither opens nor links are tracked.
 func (t Tracking) Off() bool {
-	return t.Opens == "TRACKING_MODE_OFF" && t.Links == "TRACKING_MODE_OFF"
+	return t.Opens == ModeOff && t.Links == ModeOff
+}
+
+// PolicyTracking is Salvo's policy in Kannon's names.
+func PolicyTracking(p tracking.Policy) Tracking {
+	mode := func(m tracking.Mode) string {
+		if m == tracking.Pseudonymous {
+			return ModePseudonymous
+		}
+		return ModeOff
+	}
+	return Tracking{Opens: mode(p.Opens), Links: mode(p.Links)}
+}
+
+// Raised reports whether anything is tracked: a mode other than off, an empty one counting
+// as off.
+func (t Tracking) Raised() bool {
+	t = t.orOff()
+	return !t.Off()
+}
+
+func (t Tracking) orOff() Tracking {
+	if t.Opens == "" {
+		t.Opens = ModeOff
+	}
+	if t.Links == "" {
+		t.Links = ModeOff
+	}
+	return t
 }
 
 func (a *Admin) DomainTracking(ctx context.Context, domain string) (Tracking, error) {

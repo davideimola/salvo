@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 type Config struct {
@@ -37,6 +39,13 @@ type Config struct {
 	SubscribeURL      string
 	ConfirmedURL      string
 	PrivacyURL        string
+
+	// TrackingCeiling is the most tracking the owner allows, for opens and for links
+	// (TRACKING_OPENS, TRACKING_LINKS). Both `off` unless raised.
+	TrackingCeiling tracking.Policy
+	// NoticeVersion names the privacy notice in force, recorded with every Tracking choice.
+	// Required while a ceiling is raised.
+	NoticeVersion string
 
 	OwnerEmail         string
 	GoogleClientID     string
@@ -84,9 +93,21 @@ func FromEnv() (*Config, error) {
 		GoogleClientID:     get("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: get("GOOGLE_CLIENT_SECRET"),
 		SessionKey:         get("SESSION_KEY"),
+		NoticeVersion:      opt("NOTICE_VERSION", ""),
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("missing environment variables: %s", strings.Join(missing, ", "))
+	}
+	var errs []error
+	for name, mode := range map[string]*tracking.Mode{"TRACKING_OPENS": &c.TrackingCeiling.Opens, "TRACKING_LINKS": &c.TrackingCeiling.Links} {
+		m, err := tracking.ParseMode(opt(name, string(tracking.Off)))
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", name, err))
+		}
+		*mode = m
+	}
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
 	return c, c.validate()
 }
@@ -119,6 +140,9 @@ func (c *Config) validate() error {
 	}
 	if len(c.APIKey) < 32 {
 		errs = append(errs, errors.New("API_KEY must be at least 32 characters"))
+	}
+	if c.TrackingCeiling.Raised() && c.NoticeVersion == "" {
+		errs = append(errs, errors.New("NOTICE_VERSION is required while TRACKING_OPENS or TRACKING_LINKS is raised"))
 	}
 	if len(c.SessionKey) < 32 {
 		errs = append(errs, errors.New("SESSION_KEY must be at least 32 characters"))

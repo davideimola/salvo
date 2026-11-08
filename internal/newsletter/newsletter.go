@@ -10,6 +10,10 @@
 //     after PendingRetention.
 //   - An unsubscribed address is never mailed again unless it subscribes, and confirms, again.
 //   - An issue goes out once. It must be test-sent after its last change first.
+//   - Tracking is `off` unless the owner raises a Tracking ceiling. A Subscriber is tracked
+//     only with a Tracking consent, given by a confirmation click, and never beyond the lower
+//     of the ceiling it was given under and the current one. Every real send states every
+//     recipient's policy; test sends and confirmation emails are never tracked.
 package newsletter
 
 import (
@@ -26,6 +30,7 @@ import (
 
 	"github.com/davideimola/salvo/internal/kannon"
 	"github.com/davideimola/salvo/internal/store"
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 const (
@@ -41,6 +46,8 @@ var (
 	ErrExpiredLink       = errors.New("the link has expired")
 	ErrInvalidIssue      = errors.New("the issue is not valid")
 	ErrNoUnsubscribeLink = errors.New("the issue HTML has no {{ unsubscribe_url }}")
+	// ErrTrackingOff is tracking asked for while every Tracking ceiling is `off`.
+	ErrTrackingOff = errors.New("tracking was asked for, but this newsletter tracks nothing")
 )
 
 type Mailer interface {
@@ -59,7 +66,11 @@ type Service struct {
 	TestRecipient string
 	// Ident is who the newsletter is; read it through Identity, which fills in the defaults.
 	Ident Identity
-	Now   func() time.Time
+	// Ceiling is the Tracking ceiling; the zero value tracks nothing.
+	Ceiling tracking.Policy
+	// NoticeVersion is recorded with every Tracking choice. Required while Ceiling is raised.
+	NoticeVersion string
+	Now           func() time.Time
 }
 
 // NormalizeEmail returns the address as it is stored, or ErrInvalidEmail.
@@ -79,9 +90,14 @@ func NormalizeEmail(raw string) (string, error) {
 	return email, nil
 }
 
-// Subscribe starts the double opt-in for an address. It returns nil whether the address is
-// new, waiting, already confirmed or unsubscribed, so the caller cannot tell them apart.
-func (s *Service) Subscribe(ctx context.Context, raw string) error {
+// Subscribe starts the double opt-in for an address, asking for a Tracking consent too when
+// wantsTracking. It returns nil whether the address is new, waiting, already confirmed or
+// unsubscribed, so the caller cannot tell them apart. Asking for tracking while every
+// ceiling is `off` is ErrTrackingOff.
+func (s *Service) Subscribe(ctx context.Context, raw string, wantsTracking bool) error {
+	if wantsTracking && !s.Ceiling.Raised() {
+		return ErrTrackingOff
+	}
 	email, err := NormalizeEmail(raw)
 	if err != nil {
 		return err
@@ -92,7 +108,7 @@ func (s *Service) Subscribe(ctx context.Context, raw string) error {
 	sub, err := s.Store.SubscriberByEmail(ctx, email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		sub, err = s.Store.CreatePending(ctx, email, hash, secret(), now)
+		sub, err = s.Store.CreatePending(ctx, email, hash, secret(), wantsTracking, now)
 		if store.IsUniqueViolation(err) {
 			return nil // the same address, submitted twice at once: the other request mails it
 		}
@@ -104,22 +120,45 @@ func (s *Service) Subscribe(ctx context.Context, raw string) error {
 	case sub.Status == store.Confirmed:
 		return nil
 	case sub.Status == store.Pending && sub.ConfirmSentAt != nil && now.Sub(*sub.ConfirmSentAt) < ResendCooldown:
-		return nil
+		// No second email inside the cooldown, but the link already sent confirms this
+		// request: the latest choice is the one the click makes.
+		if err := s.Store.SetConfirmTracking(ctx, sub.ID, wantsTracking); err != nil {
+			return err
+		}
+		return s.requestTracking(ctx, sub.ID, wantsTracking)
 	default:
-		if err := s.Store.Rearm(ctx, sub.ID, hash, now); err != nil {
+		if err := s.Store.Rearm(ctx, sub.ID, hash, wantsTracking, now); err != nil {
 			return err
 		}
 	}
+	if err := s.requestTracking(ctx, sub.ID, wantsTracking); err != nil {
+		return err
+	}
 
-	if err := s.sendConfirmation(ctx, email, token); err != nil {
+	if err := s.sendConfirmation(ctx, email, token, wantsTracking); err != nil {
 		s.Store.ClearConfirmSent(ctx, sub.ID)
 		return err
 	}
 	return nil
 }
 
+// requestTracking records that tracking was asked for and awaits the confirmation click.
+func (s *Service) requestTracking(ctx context.Context, subscriberID int64, wantsTracking bool) error {
+	if !wantsTracking {
+		return nil
+	}
+	_, err := s.Store.AddTrackingChoice(ctx, subscriberID, s.choice(store.Requested, store.FromSubscribe))
+	return err
+}
+
+// choice is a Tracking choice made now, under the ceiling and notice in force.
+func (s *Service) choice(kind store.ChoiceKind, source store.ChoiceSource) store.TrackingChoice {
+	return store.TrackingChoice{Kind: kind, At: s.Now(), Source: source, NoticeVersion: s.NoticeVersion, Ceiling: s.Ceiling}
+}
+
 // Confirm turns the token of a confirmation link into a subscription. A link clicked twice
-// confirms once and succeeds both times.
+// confirms once and succeeds both times. The same click gives the Tracking consent the
+// request asked for, or, while a ceiling is raised, records that it was refused.
 func (s *Service) Confirm(ctx context.Context, token string) error {
 	sub, err := s.Store.SubscriberByConfirmHash(ctx, hashToken(token))
 	if errors.Is(err, store.ErrNotFound) {
@@ -135,9 +174,36 @@ func (s *Service) Confirm(ctx context.Context, token string) error {
 		if sub.ConfirmSentAt != nil && s.Now().Sub(*sub.ConfirmSentAt) > ConfirmWindow {
 			return ErrExpiredLink
 		}
-		return s.Store.Confirm(ctx, sub.ID, s.Now())
+		choice, err := s.confirmationChoice(ctx, sub)
+		if err != nil {
+			return err
+		}
+		return s.Store.Confirm(ctx, sub.ID, s.Now(), choice)
 	}
 	return ErrInvalidLink
+}
+
+// confirmationChoice is the Tracking choice a confirmation click makes, or nil for none. A
+// consent given here is held to the ceiling and notice of the request it confirms, the ones
+// its confirmation email described, and never above the current ceiling.
+func (s *Service) confirmationChoice(ctx context.Context, sub *store.Subscriber) (*store.TrackingChoice, error) {
+	if sub.ConfirmTracking {
+		req, err := s.Store.LatestTrackingRequest(ctx, sub.ID)
+		switch {
+		case err == nil:
+			given := s.choice(store.Given, store.FromSubscribe)
+			given.NoticeVersion = req.NoticeVersion
+			given.Ceiling = req.Ceiling.Min(s.Ceiling)
+			return &given, nil
+		case !errors.Is(err, store.ErrNotFound):
+			return nil, err
+		}
+	}
+	if !s.Ceiling.Raised() {
+		return nil, nil
+	}
+	refused := s.choice(store.Refused, store.FromSubscribe)
+	return &refused, nil
 }
 
 // Unsubscriber returns the subscriber an unsubscribe link belongs to.
@@ -221,19 +287,33 @@ func (s *Service) Send(ctx context.Context, slug string) (*store.Issue, error) {
 		return nil, err
 	}
 	if len(recipients) == 0 {
-		return s.finish(ctx, slug, 0, &kannon.Result{})
+		return s.finish(ctx, slug, store.SendOutcome{}, &kannon.Result{})
 	}
+	// With every ceiling `off` the message is exactly what it was before tracking existed:
+	// batch `off`, no per-recipient field. Otherwise every recipient states its own policy,
+	// `off` included, so a field left out can never widen tracking up to the batch's.
+	raised := s.Ceiling.Raised()
+	outcome := store.SendOutcome{Recipients: len(recipients)}
 	to := make([]kannon.Recipient, len(recipients))
 	for i, r := range recipients {
 		to[i] = kannon.Recipient{Email: r.Email, Fields: map[string]string{
 			"token": r.UnsubscribeToken, "unsubscribe_url": s.unsubscribeURL(r.UnsubscribeToken),
 		}}
+		if raised {
+			p := tracking.Effective(r.Consent, s.Ceiling)
+			if p.Raised() {
+				outcome.Tracked++
+			}
+			t := kannon.PolicyTracking(p)
+			to[i].Tracking = &t
+		}
 	}
 	res, err := s.Mailer.Send(ctx, kannon.Message{
 		Subject:        issue.Subject,
 		HTML:           issue.HTML,
 		Recipients:     to,
 		UnsubscribeURL: s.PublicURL + "/unsubscribe?token={{ token }}",
+		Tracking:       kannon.PolicyTracking(s.Ceiling),
 	})
 	var refused *kannon.RefusedError
 	switch {
@@ -244,11 +324,12 @@ func (s *Service) Send(ctx context.Context, slug string) (*store.Issue, error) {
 		s.Store.NoteSendError(ctx, slug, "outcome unknown, check Kannon before doing anything: "+err.Error())
 		return nil, err
 	}
-	return s.finish(ctx, slug, len(recipients), res)
+	return s.finish(ctx, slug, outcome, res)
 }
 
-func (s *Service) finish(ctx context.Context, slug string, n int, res *kannon.Result) (*store.Issue, error) {
-	if err := s.Store.FinishSend(ctx, slug, s.Now(), n, res.Accepted, len(res.Rejected), res.MessageID); err != nil {
+func (s *Service) finish(ctx context.Context, slug string, o store.SendOutcome, res *kannon.Result) (*store.Issue, error) {
+	o.Accepted, o.Rejected, o.MessageID = res.Accepted, len(res.Rejected), res.MessageID
+	if err := s.Store.FinishSend(ctx, slug, s.Now(), o); err != nil {
 		return nil, err
 	}
 	return s.Store.Issue(ctx, slug)
@@ -258,9 +339,11 @@ func (s *Service) unsubscribeURL(token string) string {
 	return s.PublicURL + "/unsubscribe?token=" + token
 }
 
-func (s *Service) sendConfirmation(ctx context.Context, email, token string) error {
+// sendConfirmation mails the confirmation link. It is never tracked: the email asking for
+// consent is the last place tracking could hide.
+func (s *Service) sendConfirmation(ctx context.Context, email, token string, wantsTracking bool) error {
 	id := s.Identity()
-	html, err := renderConfirmation(id, s.PublicURL+"/confirm?token="+token)
+	html, err := renderConfirmation(id, s.PublicURL+"/confirm?token="+token, s.Ceiling, wantsTracking)
 	if err != nil {
 		return err
 	}

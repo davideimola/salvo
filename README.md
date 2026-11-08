@@ -124,7 +124,7 @@ it. When the test looks right, open `/admin` and send it.
 
 | Route | Who | What |
 |---|---|---|
-| `POST /api/subscribers` `{"email"}` | website, `Authorization: Bearer API_KEY` | start the double opt-in; `202` whatever the address's state, `400` for an invalid address |
+| `POST /api/subscribers` `{"email","tracking"}` | website, `Authorization: Bearer API_KEY` | start the double opt-in, asking for a Tracking consent too when `tracking` is `true`; `202` whatever the address's state, `400` for an invalid address or for `tracking` while every ceiling is `off` |
 | `PUT /api/issues/{slug}` `{"subject","html"}` | website | save or replace a draft; the HTML must contain `{{ unsubscribe_url }}` |
 | `POST /api/issues/{slug}/test` | website | send the draft to `TEST_RECIPIENT` |
 | `GET /confirm?token=` | reader | confirm, then redirect to `CONFIRMED_URL` |
@@ -137,7 +137,7 @@ it. When the test looks right, open `/admin` and send it.
 ## Configuration
 
 Environment variables. All are required except `LISTEN_ADDR`, `KANNON_ADMIN_TOKEN` and the
-ones under [What readers see](#what-readers-see).
+ones under [What readers see](#what-readers-see) and [Tracking](#tracking).
 
 | Variable | What it is |
 |---|---|
@@ -170,8 +170,22 @@ All optional. Left empty, each has a default that reads well for any newsletter.
 | `CONFIRMED_URL` | where a reader lands after confirming | `PUBLIC_URL/confirmed` |
 | `PRIVACY_URL` | your privacy notice, linked from the confirmation email | no link |
 
-The confirmation email always opens with `SENDER_NAME` and always says the newsletter carries
-no tracking pixel and no tracked links.
+The confirmation email always opens with `SENDER_NAME`. With tracking `off` it says the
+newsletter carries no tracking pixel and no tracked links.
+
+### Tracking
+
+Off unless you raise a Tracking ceiling. A Subscriber is tracked only after giving a Tracking
+consent, by ticking a separate box when subscribing and then clicking the confirmation link,
+and never beyond the ceiling in force when they gave it.
+
+| Variable | What it is | Default |
+|---|---|---|
+| `TRACKING_OPENS` | the Tracking ceiling for opens: `off` or `pseudonymous` | `off` |
+| `TRACKING_LINKS` | the Tracking ceiling for links: `off` or `pseudonymous` | `off` |
+| `NOTICE_VERSION` | the version of your privacy notice, recorded with every Tracking choice; required while a ceiling is raised | none |
+
+Any other mode refuses to start.
 
 ## Commands
 

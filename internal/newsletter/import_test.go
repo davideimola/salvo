@@ -18,7 +18,7 @@ const kitExport = "\uFEFFfirst_name,email,created_at,status,tags,city,state,coun
 func TestImportKit(t *testing.T) {
 	ctx := context.Background()
 	svc, m, _ := setup(t)
-	svc.Subscribe(ctx, "already@example.org")
+	svc.Subscribe(ctx, "already@example.org", false)
 	sent := m.count()
 
 	res, err := svc.ImportKit(ctx, strings.NewReader(kitExport))

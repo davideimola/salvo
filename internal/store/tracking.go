@@ -1,0 +1,110 @@
+package store
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/davideimola/salvo/internal/tracking"
+)
+
+// ChoiceKind is what a Tracking choice decided.
+type ChoiceKind string
+
+const (
+	// Requested is tracking asked for and awaiting its confirmation click.
+	Requested ChoiceKind = "requested"
+	Given     ChoiceKind = "given"
+	Refused   ChoiceKind = "refused"
+	Withdrawn ChoiceKind = "withdrawn"
+)
+
+// ChoiceSource is where a Tracking choice was made.
+type ChoiceSource string
+
+const (
+	// FromSubscribe is the subscribe form or API, and its confirmation click.
+	FromSubscribe ChoiceSource = "subscribe"
+	// FromPreferences is the Preferences page, and the tracking confirmation click.
+	FromPreferences ChoiceSource = "preferences"
+)
+
+// TrackingChoice is one recorded decision about tracking. It is never changed once recorded.
+type TrackingChoice struct {
+	ID           int64
+	SubscriberID int64
+	// Subscription is the subscription it was made in (Subscriber.Subscription at the time).
+	Subscription  int
+	Kind          ChoiceKind
+	At            time.Time
+	Source        ChoiceSource
+	NoticeVersion string
+	// Ceiling is the Tracking ceiling in force when the choice was made.
+	Ceiling tracking.Policy
+}
+
+const choiceColumns = `id, subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling`
+
+func scanChoice(row pgx.Row) (*TrackingChoice, error) {
+	var c TrackingChoice
+	err := row.Scan(&c.ID, &c.SubscriberID, &c.Subscription, &c.Kind, &c.At, &c.Source, &c.NoticeVersion,
+		&c.Ceiling.Opens, &c.Ceiling.Links)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return &c, err
+}
+
+// AddTrackingChoice records a choice for the subscriber's current subscription. Kind, At,
+// Source, NoticeVersion and Ceiling are taken from c; the rest is filled in.
+func (s *Store) AddTrackingChoice(ctx context.Context, subscriberID int64, c TrackingChoice) (*TrackingChoice, error) {
+	return scanChoice(s.pool.QueryRow(ctx, `INSERT INTO tracking_choices
+		(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
+		SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1
+		RETURNING `+choiceColumns,
+		subscriberID, c.Kind, c.At, c.Source, c.NoticeVersion, c.Ceiling.Opens, c.Ceiling.Links))
+}
+
+// TrackingChoices returns every choice ever recorded for the subscriber, earlier
+// subscriptions' included, oldest first.
+func (s *Store) TrackingChoices(ctx context.Context, subscriberID int64) ([]TrackingChoice, error) {
+	rows, err := s.pool.Query(ctx, "SELECT "+choiceColumns+" FROM tracking_choices WHERE subscriber_id = $1 ORDER BY at, id", subscriberID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrackingChoice
+	for rows.Next() {
+		c, err := scanChoice(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *c)
+	}
+	return out, rows.Err()
+}
+
+// LatestTrackingChoice is the subscriber's state: the latest choice of their current
+// subscription, or ErrNotFound when they have made none in it (no Tracking consent).
+func (s *Store) LatestTrackingChoice(ctx context.Context, subscriberID int64) (*TrackingChoice, error) {
+	return scanChoice(s.pool.QueryRow(ctx, `SELECT `+prefixed("c.", choiceColumns)+`
+		FROM tracking_choices c JOIN subscribers s ON s.id = c.subscriber_id AND s.subscription = c.subscription
+		WHERE c.subscriber_id = $1 ORDER BY c.at DESC, c.id DESC LIMIT 1`, subscriberID))
+}
+
+// LatestTrackingRequest is the latest `requested` choice of the subscriber's current
+// subscription, or ErrNotFound.
+func (s *Store) LatestTrackingRequest(ctx context.Context, subscriberID int64) (*TrackingChoice, error) {
+	return scanChoice(s.pool.QueryRow(ctx, `SELECT `+prefixed("c.", choiceColumns)+`
+		FROM tracking_choices c JOIN subscribers s ON s.id = c.subscriber_id AND s.subscription = c.subscription
+		WHERE c.subscriber_id = $1 AND c.kind = 'requested' ORDER BY c.at DESC, c.id DESC LIMIT 1`, subscriberID))
+}
+
+// SetConfirmTracking records whether the latest request, the one the pending confirmation
+// link answers, asked for tracking.
+func (s *Store) SetConfirmTracking(ctx context.Context, id int64, wantsTracking bool) error {
+	_, err := s.pool.Exec(ctx, "UPDATE subscribers SET confirm_tracking = $2 WHERE id = $1 AND status = 'pending'", id, wantsTracking)
+	return err
+}

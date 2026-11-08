@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 //go:embed migrations/*.sql
@@ -120,15 +122,21 @@ type Subscriber struct {
 	CreatedAt        time.Time
 	ConfirmedAt      *time.Time
 	UnsubscribedAt   *time.Time
+	// Subscription counts the address's subscriptions: 1 for the first, one more each time it
+	// subscribes again after unsubscribing. Tracking choices belong to one subscription.
+	Subscription int
+	// ConfirmTracking is whether the request the pending confirmation link answers asked for
+	// tracking.
+	ConfirmTracking bool
 }
 
 const subscriberColumns = `id, email, status, confirm_token_hash, confirm_sent_at, unsubscribe_token,
-	source, created_at, confirmed_at, unsubscribed_at`
+	source, created_at, confirmed_at, unsubscribed_at, subscription, confirm_tracking`
 
 func scanSubscriber(row pgx.Row) (*Subscriber, error) {
 	var s Subscriber
 	err := row.Scan(&s.ID, &s.Email, &s.Status, &s.ConfirmTokenHash, &s.ConfirmSentAt, &s.UnsubscribeToken,
-		&s.Source, &s.CreatedAt, &s.ConfirmedAt, &s.UnsubscribedAt)
+		&s.Source, &s.CreatedAt, &s.ConfirmedAt, &s.UnsubscribedAt, &s.Subscription, &s.ConfirmTracking)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -152,11 +160,11 @@ func (s *Store) SubscriberByUnsubscribeToken(ctx context.Context, token string) 
 }
 
 // CreatePending inserts a new address waiting for its confirmation click.
-func (s *Store) CreatePending(ctx context.Context, email string, confirmHash []byte, unsubscribeToken string, now time.Time) (*Subscriber, error) {
+func (s *Store) CreatePending(ctx context.Context, email string, confirmHash []byte, unsubscribeToken string, wantsTracking bool, now time.Time) (*Subscriber, error) {
 	return scanSubscriber(s.pool.QueryRow(ctx, `INSERT INTO subscribers
-		(email, status, confirm_token_hash, confirm_sent_at, unsubscribe_token, created_at)
-		VALUES ($1, 'pending', $2, $3, $4, $3)
-		RETURNING `+subscriberColumns, email, confirmHash, now, unsubscribeToken))
+		(email, status, confirm_token_hash, confirm_sent_at, unsubscribe_token, created_at, confirm_tracking)
+		VALUES ($1, 'pending', $2, $3, $4, $3, $5)
+		RETURNING `+subscriberColumns, email, confirmHash, now, unsubscribeToken, wantsTracking))
 }
 
 // ImportConfirmed adds an address that consented elsewhere, with the time it did. An address
@@ -170,18 +178,31 @@ func (s *Store) ImportConfirmed(ctx context.Context, email, unsubscribeToken, so
 }
 
 // Rearm puts an existing address back to pending with a fresh confirmation link: a pending
-// address asking again, or an unsubscribed one subscribing again.
-func (s *Store) Rearm(ctx context.Context, id int64, confirmHash []byte, now time.Time) error {
+// address asking again, or an unsubscribed one subscribing again, which starts a new
+// subscription.
+func (s *Store) Rearm(ctx context.Context, id int64, confirmHash []byte, wantsTracking bool, now time.Time) error {
 	_, err := s.pool.Exec(ctx, `UPDATE subscribers SET status = 'pending', confirm_token_hash = $2,
-		confirm_sent_at = $3, confirmed_at = NULL, unsubscribed_at = NULL
-		WHERE id = $1 AND status <> 'confirmed'`, id, confirmHash, now)
+		confirm_sent_at = $3, confirmed_at = NULL, unsubscribed_at = NULL, confirm_tracking = $4,
+		subscription = subscription + CASE WHEN status = 'unsubscribed' THEN 1 ELSE 0 END
+		WHERE id = $1 AND status <> 'confirmed'`, id, confirmHash, now, wantsTracking)
 	return err
 }
 
-func (s *Store) Confirm(ctx context.Context, id int64, now time.Time) error {
-	_, err := s.pool.Exec(ctx, `UPDATE subscribers SET status = 'confirmed', confirmed_at = $2
-		WHERE id = $1 AND status = 'pending'`, id, now)
-	return err
+// Confirm records the confirmation click and, in the same step, the Tracking choice it makes,
+// if any. A click that finds the address no longer pending records nothing.
+func (s *Store) Confirm(ctx context.Context, id int64, now time.Time, choice *TrackingChoice) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE subscribers SET status = 'confirmed', confirmed_at = $2
+			WHERE id = $1 AND status = 'pending'`, id, now)
+		if err != nil || tag.RowsAffected() == 0 || choice == nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO tracking_choices
+			(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
+			SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1`,
+			id, choice.Kind, choice.At, choice.Source, choice.NoticeVersion, choice.Ceiling.Opens, choice.Ceiling.Links)
+		return err
+	})
 }
 
 func (s *Store) Unsubscribe(ctx context.Context, id int64, now time.Time) error {
@@ -191,7 +212,7 @@ func (s *Store) Unsubscribe(ctx context.Context, id int64, now time.Time) error 
 }
 
 // Erase deletes the row outright: the deletion a subscriber can ask for. Nothing about the
-// address is left behind.
+// address is left behind: its Tracking choices go with it.
 func (s *Store) Erase(ctx context.Context, id int64) error {
 	tag, err := s.pool.Exec(ctx, "DELETE FROM subscribers WHERE id = $1", id)
 	if err == nil && tag.RowsAffected() == 0 {
@@ -261,14 +282,25 @@ func (s *Store) ListSubscribers(ctx context.Context, q SubscriberQuery) ([]Subsc
 	return out, total, rows.Err()
 }
 
-// Recipient is one confirmed address and the token its unsubscribe link carries.
+// Recipient is one confirmed address, the token its unsubscribe link carries, and its
+// Tracking consent.
 type Recipient struct {
 	Email            string
 	UnsubscribeToken string
+	// Consent is the ceiling recorded with the recipient's Tracking consent, nil when the
+	// latest choice of their current subscription is not `given`.
+	Consent *tracking.Policy
 }
 
 func (s *Store) ConfirmedRecipients(ctx context.Context) ([]Recipient, error) {
-	rows, err := s.pool.Query(ctx, "SELECT email, unsubscribe_token FROM subscribers WHERE status = 'confirmed' ORDER BY id")
+	rows, err := s.pool.Query(ctx, `SELECT s.email, s.unsubscribe_token, c.kind, c.opens_ceiling, c.links_ceiling
+		FROM subscribers s
+		LEFT JOIN LATERAL (
+			SELECT kind, opens_ceiling, links_ceiling FROM tracking_choices
+			WHERE subscriber_id = s.id AND subscription = s.subscription
+			ORDER BY at DESC, id DESC LIMIT 1
+		) c ON true
+		WHERE s.status = 'confirmed' ORDER BY s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -276,8 +308,13 @@ func (s *Store) ConfirmedRecipients(ctx context.Context) ([]Recipient, error) {
 	var out []Recipient
 	for rows.Next() {
 		var r Recipient
-		if err := rows.Scan(&r.Email, &r.UnsubscribeToken); err != nil {
+		var kind *ChoiceKind
+		var opens, links *tracking.Mode
+		if err := rows.Scan(&r.Email, &r.UnsubscribeToken, &kind, &opens, &links); err != nil {
 			return nil, err
+		}
+		if kind != nil && *kind == Given {
+			r.Consent = &tracking.Policy{Opens: *opens, Links: *links}
 		}
 		out = append(out, r)
 	}
@@ -306,6 +343,8 @@ type Issue struct {
 	Rejected        *int
 	KannonMessageID *string
 	LastError       *string
+	// TrackedRecipients is how many recipients had Tracking consent when the issue went out.
+	TrackedRecipients *int
 }
 
 // Tested reports whether the last test send came after the last change.
@@ -314,12 +353,12 @@ func (i *Issue) Tested() bool {
 }
 
 const issueColumns = `slug, subject, html, status, created_at, updated_at, test_sent_at, sent_at,
-	recipients, accepted, rejected, kannon_message_id, last_error`
+	recipients, accepted, rejected, kannon_message_id, last_error, tracked_recipients`
 
 func scanIssue(row pgx.Row) (*Issue, error) {
 	var i Issue
 	err := row.Scan(&i.Slug, &i.Subject, &i.HTML, &i.Status, &i.CreatedAt, &i.UpdatedAt, &i.TestSentAt, &i.SentAt,
-		&i.Recipients, &i.Accepted, &i.Rejected, &i.KannonMessageID, &i.LastError)
+		&i.Recipients, &i.Accepted, &i.Rejected, &i.KannonMessageID, &i.LastError, &i.TrackedRecipients)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -384,10 +423,21 @@ func (s *Store) BeginSend(ctx context.Context, slug string) error {
 	return s.sendingOrSent(ctx, slug)
 }
 
-func (s *Store) FinishSend(ctx context.Context, slug string, now time.Time, recipients, accepted, rejected int, messageID string) error {
+// SendOutcome is what a finished send leaves on its issue.
+type SendOutcome struct {
+	Recipients int
+	// Tracked is how many of the recipients were sent with any tracking.
+	Tracked   int
+	Accepted  int
+	Rejected  int
+	MessageID string
+}
+
+func (s *Store) FinishSend(ctx context.Context, slug string, now time.Time, o SendOutcome) error {
 	_, err := s.pool.Exec(ctx, `UPDATE issues SET status = 'sent', sent_at = $2, recipients = $3,
-		accepted = $4, rejected = $5, kannon_message_id = $6 WHERE slug = $1 AND status = 'sending'`,
-		slug, now, recipients, accepted, rejected, messageID)
+		accepted = $4, rejected = $5, kannon_message_id = $6, tracked_recipients = $7
+		WHERE slug = $1 AND status = 'sending'`,
+		slug, now, o.Recipients, o.Accepted, o.Rejected, o.MessageID, o.Tracked)
 	return err
 }
 
@@ -414,6 +464,15 @@ func (s *Store) sendingOrSent(ctx context.Context, slug string) error {
 		return ErrSending
 	}
 	return ErrAlreadySent
+}
+
+// prefixed qualifies each of a comma-separated list of columns with a table alias.
+func prefixed(alias, columns string) string {
+	parts := strings.Split(columns, ",")
+	for i, p := range parts {
+		parts[i] = alias + strings.TrimSpace(p)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // IsUniqueViolation reports whether err is Postgres refusing a duplicate key.

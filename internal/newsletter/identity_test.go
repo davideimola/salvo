@@ -12,7 +12,7 @@ import (
 func TestConfirmationDefaults(t *testing.T) {
 	svc, m, _ := setup(t)
 	svc.Ident = newsletter.Identity{Sender: "Ada Lovelace"}
-	if err := svc.Subscribe(context.Background(), "reader@example.org"); err != nil {
+	if err := svc.Subscribe(context.Background(), "reader@example.org", false); err != nil {
 		t.Fatal(err)
 	}
 	msg := m.last()
@@ -43,7 +43,7 @@ func TestConfirmationSaysWhatTheIdentitySays(t *testing.T) {
 		ConfirmSubject: "Confirm your subscription to example.com",
 		PrivacyURL:     "https://example.com/privacy",
 	}
-	if err := svc.Subscribe(context.Background(), "reader@example.org"); err != nil {
+	if err := svc.Subscribe(context.Background(), "reader@example.org", false); err != nil {
 		t.Fatal(err)
 	}
 	msg := m.last()

@@ -87,7 +87,7 @@ func TestDoubleOptIn(t *testing.T) {
 	ctx := context.Background()
 	svc, m, _ := setup(t)
 
-	if err := svc.Subscribe(ctx, "  Reader@Example.org "); err != nil {
+	if err := svc.Subscribe(ctx, "  Reader@Example.org ", false); err != nil {
 		t.Fatal(err)
 	}
 	if got := status(t, svc, "reader@example.org"); got != store.Pending {
@@ -121,12 +121,12 @@ func TestDoubleOptIn(t *testing.T) {
 func TestSubscribeRevealsNothing(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	svc.Confirm(ctx, confirmToken(t, m.last()))
 	before := m.count()
 
 	c.advance(time.Hour)
-	if err := svc.Subscribe(ctx, "reader@example.org"); err != nil {
+	if err := svc.Subscribe(ctx, "reader@example.org", false); err != nil {
 		t.Fatalf("a confirmed address subscribing again: %v", err)
 	}
 	if m.count() != before {
@@ -137,17 +137,17 @@ func TestSubscribeRevealsNothing(t *testing.T) {
 func TestResendCooldown(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	first := confirmToken(t, m.last())
 
 	c.advance(time.Minute)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	if m.count() != 1 {
 		t.Fatalf("mailed %d times inside the cooldown, want 1", m.count())
 	}
 
 	c.advance(newsletter.ResendCooldown)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	if m.count() != 2 {
 		t.Fatalf("mailed %d times after the cooldown, want 2", m.count())
 	}
@@ -162,7 +162,7 @@ func TestResendCooldown(t *testing.T) {
 func TestConfirmationExpires(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	c.advance(newsletter.ConfirmWindow + time.Minute)
 	if err := svc.Confirm(ctx, confirmToken(t, m.last())); !errors.Is(err, newsletter.ErrExpiredLink) {
 		t.Fatalf("err = %v, want ErrExpiredLink", err)
@@ -176,11 +176,11 @@ func TestFailedConfirmationCanBeRetriedAtOnce(t *testing.T) {
 	ctx := context.Background()
 	svc, m, _ := setup(t)
 	m.err = &kannon.RefusedError{Status: 503}
-	if err := svc.Subscribe(ctx, "reader@example.org"); err == nil {
+	if err := svc.Subscribe(ctx, "reader@example.org", false); err == nil {
 		t.Fatal("want the send error back")
 	}
 	m.err = nil
-	if err := svc.Subscribe(ctx, "reader@example.org"); err != nil {
+	if err := svc.Subscribe(ctx, "reader@example.org", false); err != nil {
 		t.Fatal(err)
 	}
 	if m.count() != 1 {
@@ -191,7 +191,7 @@ func TestFailedConfirmationCanBeRetriedAtOnce(t *testing.T) {
 func TestInvalidEmails(t *testing.T) {
 	svc, m, _ := setup(t)
 	for _, e := range []string{"", "nope", "a@b", "Name <a@example.org>", "a@example.org.", "a @example.org"} {
-		if err := svc.Subscribe(context.Background(), e); !errors.Is(err, newsletter.ErrInvalidEmail) {
+		if err := svc.Subscribe(context.Background(), e, false); !errors.Is(err, newsletter.ErrInvalidEmail) {
 			t.Errorf("%q: err = %v, want ErrInvalidEmail", e, err)
 		}
 	}
@@ -203,7 +203,7 @@ func TestInvalidEmails(t *testing.T) {
 func TestUnsubscribeAndComeBack(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	svc.Confirm(ctx, confirmToken(t, m.last()))
 	sub, _ := svc.Store.SubscriberByEmail(ctx, "reader@example.org")
 
@@ -222,7 +222,7 @@ func TestUnsubscribeAndComeBack(t *testing.T) {
 
 	// Subscribing again takes a fresh confirmation.
 	c.advance(time.Hour)
-	svc.Subscribe(ctx, "reader@example.org")
+	svc.Subscribe(ctx, "reader@example.org", false)
 	if got := status(t, svc, "reader@example.org"); got != store.Pending {
 		t.Fatalf("status after subscribing again = %s, want pending", got)
 	}
@@ -235,12 +235,12 @@ func TestUnsubscribeAndComeBack(t *testing.T) {
 func TestCleanupDeletesOnlyStalePending(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
-	svc.Subscribe(ctx, "stale@example.org")
-	svc.Subscribe(ctx, "kept@example.org")
+	svc.Subscribe(ctx, "stale@example.org", false)
+	svc.Subscribe(ctx, "kept@example.org", false)
 	svc.Confirm(ctx, confirmToken(t, m.last()))
 
 	c.advance(newsletter.PendingRetention + time.Hour)
-	svc.Subscribe(ctx, "fresh@example.org")
+	svc.Subscribe(ctx, "fresh@example.org", false)
 	n, err := svc.Cleanup(ctx)
 	if err != nil || n != 1 {
 		t.Fatalf("cleanup = %d, %v; want 1", n, err)
@@ -260,7 +260,7 @@ const issueHTML = `<p>Hello</p><a href="{{ unsubscribe_url }}">Unsubscribe</a>`
 func confirmed(t *testing.T, svc *newsletter.Service, m *mailer, emails ...string) {
 	t.Helper()
 	for _, e := range emails {
-		if err := svc.Subscribe(context.Background(), e); err != nil {
+		if err := svc.Subscribe(context.Background(), e, false); err != nil {
 			t.Fatal(err)
 		}
 		if err := svc.Confirm(context.Background(), confirmToken(t, m.last())); err != nil {
@@ -284,7 +284,7 @@ func TestIssueGoesOutOnceAfterATest(t *testing.T) {
 	ctx := context.Background()
 	svc, m, c := setup(t)
 	confirmed(t, svc, m, "a@example.org", "b@example.org")
-	svc.Subscribe(ctx, "waiting@example.org")
+	svc.Subscribe(ctx, "waiting@example.org", false)
 
 	if _, err := svc.SaveIssue(ctx, "2026-11", "November", issueHTML); err != nil {
 		t.Fatal(err)

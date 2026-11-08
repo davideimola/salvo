@@ -154,7 +154,9 @@ func serve(ctx context.Context) error {
 			ConfirmedURL:   cfg.ConfirmedURL,
 			PrivacyURL:     cfg.PrivacyURL,
 		},
-		Now: time.Now,
+		Ceiling:       cfg.TrackingCeiling,
+		NoticeVersion: cfg.NoticeVersion,
+		Now:           time.Now,
 	}
 	google, err := owner.NewGoogle(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/auth/callback")
 	if err != nil {

@@ -144,15 +144,20 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 func (s *Server) apiSubscribe(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Email string `json:"email"`
+		// Tracking is the Subscriber ticking the optional, separate tracking box.
+		Tracking bool `json:"tracking"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_body"})
 		return
 	}
-	err := s.svc.Subscribe(r.Context(), body.Email)
+	err := s.svc.Subscribe(r.Context(), body.Email, body.Tracking)
 	switch {
 	case errors.Is(err, newsletter.ErrInvalidEmail):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_email"})
+	case errors.Is(err, newsletter.ErrTrackingOff):
+		// The form shows a checkbox that does nothing: say so at once.
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tracking_off"})
 	case err != nil:
 		slog.Error("subscribe", "err", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "unavailable"})

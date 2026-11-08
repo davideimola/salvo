@@ -16,6 +16,7 @@ func sendTracked(t *testing.T, e *env, consenting, others []string) {
 	ctx := context.Background()
 	e.svc.Ceiling = tracking.Policy{Opens: tracking.Pseudonymous, Links: tracking.Pseudonymous}
 	e.svc.NoticeVersion = "1"
+	e.svc.Domain = allowingDomain{}
 	join := func(email string, consents bool) {
 		if err := e.svc.Subscribe(ctx, email, consents); err != nil {
 			t.Fatal(err)
@@ -40,6 +41,13 @@ func sendTracked(t *testing.T, e *env, consenting, others []string) {
 	if _, err := e.svc.Send(ctx, "2026-11"); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// allowingDomain is a Kannon Domain that allows the pseudonymous ceiling, so the send goes out.
+type allowingDomain struct{}
+
+func (allowingDomain) DomainTracking(context.Context) (kannon.Tracking, error) {
+	return kannon.Tracking{Opens: kannon.ModePseudonymous, Links: kannon.ModePseudonymous}, nil
 }
 
 func opened(ids ...string) []kannon.Event {

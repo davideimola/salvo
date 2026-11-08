@@ -26,7 +26,7 @@ You still see what matters: how many emails were delivered and how many bounced.
 
 That stays the default. If you do want to know how an issue did, you can raise a Tracking
 ceiling and measure the readers who agree to it, and only them: see
-[Opt-in tracking](#opt-in-tracking) before you do.
+[Tracking and Tracking consent](#tracking-and-tracking-consent) before you do.
 
 It began as the newsletter of [davideimola.dev](https://davideimola.dev), replacing Kit, which
 cannot send without a per-reader pixel. The story of that migration is
@@ -50,7 +50,7 @@ you, signed in with Google    |
 - **Salvo** owns the list: who subscribed, when they confirmed, who left. It decides who gets
   an issue and when.
 - **Kannon** only delivers. It keeps no list, and every send from Salvo states tracking `off`,
-  on top of the Domain's own setting. With opt-in tracking on, Salvo states each reader's
+  on top of the Domain's own setting. With a Tracking ceiling raised, Salvo states each reader's
   policy instead, `off` for everyone who did not agree.
 
 ## What it does
@@ -80,12 +80,12 @@ you, signed in with Google    |
   Salvo does not retry, because retrying could mail everybody twice.
 - **An admin page.** Subscribers, issues, preview, test, send, delete, and Kannon's delivery
   counters. If Kannon ever counts an open or a click, the page warns you.
-- **Opt-in tracking, off by default.** Off until you raise a Tracking ceiling, and then only for
-  the Subscribers who gave a Tracking consent by a click. See [below](#opt-in-tracking).
+- **Tracking, off by default.** Off until you raise a Tracking ceiling, and then only for
+  the Subscribers who gave a Tracking consent by a click. See [below](#tracking-and-tracking-consent).
 
 The rules live in `internal/newsletter`, and its tests are the specification.
 
-## Opt-in tracking
+## Tracking and Tracking consent
 
 Salvo tracks nothing unless you raise a Tracking ceiling, and with both ceilings `off`
 everything above holds exactly as written. Raising one makes you answerable for more than a
@@ -205,7 +205,7 @@ yours to answer for.
   not reach Kannon's copy of the events, which stays until Kannon's retention removes it:
   Kannon cannot erase one recipient. The events carry the pseudonym, not the address, but
   tell a Subscriber who asks the truth.
-- **Kannon's version.** Opt-in tracking needs a Kannon with per-recipient Tracking Policies and
+- **Kannon's version.** Tracking needs a Kannon with per-recipient Tracking Policies and
   the `v1beta1` event API: Kannon `main`, which Salvo already depends on.
 
 ## Run it
@@ -313,7 +313,7 @@ newsletter carries no tracking pixel and no tracked links.
 
 ### Tracking
 
-Off unless you raise a Tracking ceiling. Read [Opt-in tracking](#opt-in-tracking) before you do.
+Off unless you raise a Tracking ceiling. Read [Tracking and Tracking consent](#tracking-and-tracking-consent) before you do.
 
 | Variable | What it is | Default |
 |---|---|---|
@@ -342,7 +342,7 @@ about itself is configuration now. Next, in order:
    tracking box when a ceiling is raised.
 2. Dashboards: list growth, and deliveries and bounces per issue.
 
-[Opt-in tracking](#opt-in-tracking) is built: off unless you turn it on, and then only for
+[Tracking and Tracking consent](#tracking-and-tracking-consent) is built: off unless you turn it on, and then only for
 readers who said yes.
 
 ## Development

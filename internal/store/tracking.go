@@ -108,3 +108,33 @@ func (s *Store) SetConfirmTracking(ctx context.Context, id int64, wantsTracking 
 	_, err := s.pool.Exec(ctx, "UPDATE subscribers SET confirm_tracking = $2 WHERE id = $1 AND status = 'pending'", id, wantsTracking)
 	return err
 }
+
+// NoticeConsents is how many current Tracking consents were given under one Notice version.
+type NoticeConsents struct {
+	NoticeVersion string
+	Consents      int
+}
+
+// ConsentsByNotice counts the current Tracking consents per Notice version, oldest version
+// first: confirmed Subscribers whose latest choice of their current subscription is `given`.
+func (s *Store) ConsentsByNotice(ctx context.Context) ([]NoticeConsents, error) {
+	rows, err := s.pool.Query(ctx, `SELECT notice_version, count(*) FROM (
+		SELECT DISTINCT ON (c.subscriber_id) c.kind, c.notice_version, c.at
+		FROM tracking_choices c JOIN subscribers s ON s.id = c.subscriber_id AND s.subscription = c.subscription
+		WHERE s.status = 'confirmed'
+		ORDER BY c.subscriber_id, c.at DESC, c.id DESC
+	) latest WHERE kind = 'given' GROUP BY notice_version ORDER BY min(at), notice_version`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []NoticeConsents
+	for rows.Next() {
+		var n NoticeConsents
+		if err := rows.Scan(&n.NoticeVersion, &n.Consents); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
+}

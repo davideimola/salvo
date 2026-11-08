@@ -9,11 +9,12 @@ import (
 	"github.com/davideimola/salvo/internal/kannon"
 )
 
-// Delivery is what the admin pages read from Kannon: aggregated counters and the Domain's
-// Tracking Policy. Nothing in it names a recipient.
+// Delivery is what the admin pages read from Kannon: aggregated counters, the Domain's
+// Tracking Policy, and an issue's events, which Salvo only counts and never stores (ADR 0003).
 type Delivery interface {
 	AggregatedStats(ctx context.Context, domain string, from, to time.Time) ([]kannon.Count, error)
 	DomainTracking(ctx context.Context, domain string) (kannon.Tracking, error)
+	Events(ctx context.Context, domain string, q kannon.EventQuery) ([]kannon.Event, error)
 }
 
 // WithDelivery turns on the delivery panel. Without it the admin pages simply leave it out.

@@ -298,9 +298,20 @@ func TestAdminErase(t *testing.T) {
 
 // delivery stands in for Kannon's Admin and Stats APIs.
 type delivery struct {
-	counts   []kannon.Count
-	tracking kannon.Tracking
-	err      error
+	counts    []kannon.Count
+	tracking  kannon.Tracking
+	err       error
+	events    map[string][]kannon.Event // by type
+	eventsErr error
+	queries   []kannon.EventQuery
+}
+
+func (d *delivery) Events(_ context.Context, _ string, q kannon.EventQuery) ([]kannon.Event, error) {
+	d.queries = append(d.queries, q)
+	if d.eventsErr != nil {
+		return nil, d.eventsErr
+	}
+	return d.events[q.Type], nil
 }
 
 func (d *delivery) AggregatedStats(context.Context, string, time.Time, time.Time) ([]kannon.Count, error) {

@@ -32,6 +32,8 @@
 {{template "delivery" .Delivery}}
 {{end}}
 
+{{with .Engagement}}{{template "engagement" .}}{{end}}
+
 {{if eq (print .Issue.Status) "draft"}}
 <h2>Send</h2>
 <div class="box">

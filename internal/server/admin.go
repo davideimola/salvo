@@ -138,6 +138,7 @@ func (s *Server) adminIssue(w http.ResponseWriter, r *http.Request) {
 		// Kannon counts by Domain and hour, not by issue, so the issue's figures are the hours
 		// around its send. Confirmation emails sent in those hours are counted too.
 		data["Delivery"] = s.deliveryFor(r.Context(), issue.SentAt.Truncate(time.Hour), issue.SentAt.Add(72*time.Hour), false)
+		data["Engagement"] = s.engagementFor(r.Context(), issue)
 	}
 	s.adminPage(w, r, http.StatusOK, "issue", data)
 }

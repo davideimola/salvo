@@ -1,0 +1,17 @@
+{{define "engagement"}}
+<h2>Opens and clicks</h2>
+{{if .Error}}<div class="notice">{{.Error}}</div>{{end}}
+{{range .Metrics}}
+{{if .Over}}<div class="notice"><b>Kannon measured {{.Unique}} distinct {{.Who}}, more than the {{$.Tracked}} Tracked {{if eq $.Tracked 1}}recipient{{else}}recipients{{end}}.</b> Someone without Tracking consent was measured: check the Domain's policy and each recipient's.</div>{{end}}
+{{end}}
+{{if .Metrics}}
+<ul>
+  {{range .Metrics}}
+  {{if .Share}}<li>Unique {{.Name}}: <b>{{.Unique}}</b> of {{$.Tracked}} Tracked {{if eq $.Tracked 1}}recipient{{else}}recipients{{end}} ({{.Share}})</li>
+  {{else}}<li>Unique {{.Name}}: <b>{{.Unique}}</b>, with no Tracked recipients</li>{{end}}
+  {{end}}
+</ul>
+{{end}}
+<p>Not measured: <b>{{.NotMeasured}}</b> {{if eq .NotMeasured 1}}recipient{{else}}recipients{{end}} without Tracking consent. The shares are of the Tracked recipients only, never of the whole list.</p>
+<p class="muted">Apple Mail Privacy Protection fetches images for its users, so opens are inflated: trust clicks more than opens.</p>
+{{end}}

@@ -24,6 +24,11 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 		s.adminError(w, err)
 		return
 	}
+	consents, err := s.svc.Store.ConsentsByNotice(r.Context())
+	if err != nil {
+		s.adminError(w, err)
+		return
+	}
 	byName := map[string]int{}
 	for st, n := range counts {
 		byName[string(st)] = n
@@ -31,6 +36,7 @@ func (s *Server) adminHome(w http.ResponseWriter, r *http.Request) {
 	now := s.svc.Now()
 	s.adminPage(w, r, http.StatusOK, "home", map[string]any{
 		"Counts": byName, "Issues": issues,
+		"Consents": consents, "ShowConsents": s.svc.Ceiling.Raised() || len(consents) > 0,
 		"Delivery": s.deliveryFor(r.Context(), now.AddDate(0, 0, -30), now, true),
 	})
 }
@@ -93,7 +99,16 @@ func (s *Server) adminSubscriber(w http.ResponseWriter, r *http.Request) {
 		s.adminError(w, err)
 		return
 	}
-	s.adminPage(w, r, http.StatusOK, "subscriber", map[string]any{"Subscriber": sub})
+	choices, err := s.svc.Store.TrackingChoices(r.Context(), id)
+	if err != nil {
+		s.adminError(w, err)
+		return
+	}
+	s.adminPage(w, r, http.StatusOK, "subscriber", map[string]any{
+		"Subscriber": sub, "Choices": choices,
+		// Nothing about tracking while it is off and the address never made a choice.
+		"ShowTracking": s.svc.Ceiling.Raised() || len(choices) > 0,
+	})
 }
 
 // adminErase deletes an address entirely: the deletion a subscriber can ask for by email.

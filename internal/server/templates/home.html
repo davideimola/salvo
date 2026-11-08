@@ -6,6 +6,26 @@
   <a class="stat" href="/admin/subscribers?status=unsubscribed"><b>{{index .Counts "unsubscribed"}}</b>unsubscribed</a>
 </div>
 
+{{if .ShowConsents}}
+<h2>Tracking consents</h2>
+{{if .Consents}}
+<p class="muted">Current Tracking consents of confirmed Subscribers, by the Notice version they were given under.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Notice version</th><th>Consents</th></tr>
+  {{range .Consents}}
+  <tr>
+    <td class="mono">{{.NoticeVersion}}</td>
+    <td>{{.Consents}}</td>
+  </tr>
+  {{end}}
+</table>
+</div>
+{{else}}
+<p class="muted">No Subscriber has a Tracking consent yet.</p>
+{{end}}
+{{end}}
+
 {{if .Delivery}}
 <h2>Delivery, last 30 days</h2>
 <p class="muted">Kannon's counters for every email from the sending domain, confirmations included. Totals only: nothing here says who.</p>

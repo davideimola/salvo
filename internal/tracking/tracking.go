@@ -78,6 +78,11 @@ func (p Policy) Measures() string {
 	return ""
 }
 
+// Allows reports whether p measures at least as much as q on each axis.
+func (p Policy) Allows(q Policy) bool {
+	return p.Opens.rank() >= q.Opens.rank() && p.Links.rank() >= q.Links.rank()
+}
+
 // Min is the lower of two policies, axis by axis.
 func (p Policy) Min(q Policy) Policy {
 	return Policy{Opens: Min(p.Opens, q.Opens), Links: Min(p.Links, q.Links)}

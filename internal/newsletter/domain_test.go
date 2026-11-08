@@ -31,7 +31,7 @@ func readyToSend(t *testing.T, svc *newsletter.Service, m *mailer, c *clock) {
 	t.Helper()
 	ctx := context.Background()
 	confirmed(t, svc, m, "a@example.org")
-	if _, err := svc.SaveIssue(ctx, "2026-11", "November", issueHTML); err != nil {
+	if _, err := svc.SaveIssue(ctx, "2026-11", "November", trackedIssueHTML); err != nil {
 		t.Fatal(err)
 	}
 	c.advance(time.Minute)

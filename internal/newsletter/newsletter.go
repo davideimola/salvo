@@ -48,10 +48,19 @@ var (
 	ErrNoUnsubscribeLink = errors.New("the issue HTML has no {{ unsubscribe_url }}")
 	// ErrTrackingOff is tracking asked for while every Tracking ceiling is `off`.
 	ErrTrackingOff = errors.New("tracking was asked for, but this newsletter tracks nothing")
+	// ErrDomainBelowCeiling is a send refused because Kannon's Domain allows less tracking
+	// than the Tracking ceiling, or could not be asked.
+	ErrDomainBelowCeiling = errors.New("Kannon's Domain allows less tracking than the Tracking ceiling")
 )
 
 type Mailer interface {
 	Send(ctx context.Context, m kannon.Message) (*kannon.Result, error)
+}
+
+// DomainPolicy reads the Tracking Policy Kannon's Domain allows: its ceiling, above which
+// Kannon rejects each recipient on its own.
+type DomainPolicy interface {
+	DomainTracking(ctx context.Context) (kannon.Tracking, error)
 }
 
 type Service struct {
@@ -70,7 +79,10 @@ type Service struct {
 	Ceiling tracking.Policy
 	// NoticeVersion is recorded with every Tracking choice. Required while Ceiling is raised.
 	NoticeVersion string
-	Now           func() time.Time
+	// Domain is checked before every real send while Ceiling is raised. Required then: without
+	// it such a send is refused.
+	Domain DomainPolicy
+	Now    func() time.Time
 }
 
 // NormalizeEmail returns the address as it is stored, or ErrInvalidEmail.
@@ -277,6 +289,10 @@ func (s *Service) Send(ctx context.Context, slug string) (*store.Issue, error) {
 	if err := s.Store.BeginSend(ctx, slug); err != nil {
 		return nil, err
 	}
+	if err := s.checkDomain(ctx); err != nil {
+		s.Store.FailSend(ctx, slug, err.Error())
+		return nil, err
+	}
 	issue, err := s.Store.Issue(ctx, slug)
 	if err != nil {
 		return nil, err
@@ -325,6 +341,27 @@ func (s *Service) Send(ctx context.Context, slug string) (*store.Issue, error) {
 		return nil, err
 	}
 	return s.finish(ctx, slug, outcome, res)
+}
+
+// checkDomain refuses a send, before anything goes out, when Kannon's Domain would reject the
+// Subscribers who consented one by one. With every ceiling `off` there is nothing to check.
+func (s *Service) checkDomain(ctx context.Context) error {
+	if !s.Ceiling.Raised() {
+		return nil
+	}
+	if s.Domain == nil {
+		return fmt.Errorf("%w: the Domain cannot be checked without Kannon's admin token", ErrDomainBelowCeiling)
+	}
+	got, err := s.Domain.DomainTracking(ctx)
+	if err != nil {
+		return fmt.Errorf("%w: Kannon did not answer the check of the Domain: %v", ErrDomainBelowCeiling, err)
+	}
+	if !got.Allows(s.Ceiling) {
+		want := kannon.PolicyTracking(s.Ceiling)
+		return fmt.Errorf("%w: the Domain allows opens %s and links %s, the ceiling asks for opens %s and links %s",
+			ErrDomainBelowCeiling, got.Opens, got.Links, want.Opens, want.Links)
+	}
+	return nil
 }
 
 func (s *Service) finish(ctx context.Context, slug string, o store.SendOutcome, res *kannon.Result) (*store.Issue, error) {

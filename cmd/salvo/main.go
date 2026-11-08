@@ -175,7 +175,9 @@ func serve(ctx context.Context) error {
 
 	handler := server.New(svc, gate, cfg.APIKey)
 	if cfg.KannonAdminToken != "" {
-		handler.WithDelivery(&kannon.Admin{URL: cfg.KannonURL, Token: cfg.KannonAdminToken}, cfg.KannonDomain)
+		admin := &kannon.Admin{URL: cfg.KannonURL, Token: cfg.KannonAdminToken}
+		svc.Domain = kannon.DomainPolicy{Admin: admin, Domain: cfg.KannonDomain}
+		handler.WithDelivery(admin, cfg.KannonDomain)
 	}
 	srv := &http.Server{
 		Addr:              cfg.Listen,

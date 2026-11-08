@@ -37,7 +37,13 @@ type deliveryPanel struct {
 	Days     []deliveryRow
 	Tracked  int64 // opened + clicked: anything but zero is a fault
 	Tracking *kannon.Tracking
-	Error    string
+	// Ceiling is the Tracking ceiling, in Kannon's names, when one is raised: the Domain must
+	// allow at least it, rather than be off.
+	Ceiling *kannon.Tracking
+	// BelowCeiling is a Domain that allows less than the raised ceiling: every send is refused
+	// until it is fixed.
+	BelowCeiling bool
+	Error        string
 }
 
 // deliveryFor reads the counters between from and to, by day, newest first. It never fails
@@ -50,6 +56,11 @@ func (s *Server) deliveryFor(ctx context.Context, from, to time.Time, withDays b
 	tr, err := s.delivery.DomainTracking(ctx, s.kannonDomain)
 	if err == nil {
 		p.Tracking = &tr
+	}
+	if c := s.svc.Ceiling; c.Raised() {
+		ceiling := kannon.PolicyTracking(c)
+		p.Ceiling = &ceiling
+		p.BelowCeiling = err == nil && !tr.Allows(c)
 	}
 	counts, serr := s.delivery.AggregatedStats(ctx, s.kannonDomain, from, to)
 	if err == nil {

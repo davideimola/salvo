@@ -18,10 +18,14 @@ var (
 	linksOnly = tracking.Policy{Opens: tracking.Off, Links: tracking.Pseudonymous}
 )
 
-// raise sets the Tracking ceiling, as an owner does in configuration.
+// raise sets the Tracking ceiling, as an owner does in configuration, on a Kannon whose
+// Domain allows it unless a test says otherwise.
 func raise(svc *newsletter.Service, ceiling tracking.Policy) {
 	svc.Ceiling = ceiling
 	svc.NoticeVersion = "2026-11"
+	if svc.Domain == nil {
+		svc.Domain = &domain{tracking: pseudoDomain}
+	}
 }
 
 // join subscribes and confirms an address, ticking the tracking box or not.

@@ -200,7 +200,8 @@ func (s *Store) Confirm(ctx context.Context, id int64, now time.Time, choice *Tr
 		if err != nil || tag.RowsAffected() == 0 || choice == nil {
 			return err
 		}
-		return insertChoice(ctx, tx, id, *choice)
+		_, err = insertChoice(ctx, tx, id, *choice)
+		return err
 	})
 }
 

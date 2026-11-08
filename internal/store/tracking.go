@@ -60,7 +60,16 @@ func scanChoice(row pgx.Row) (*TrackingChoice, error) {
 // AddTrackingChoice records a choice for the subscriber's current subscription. Kind, At,
 // Source, NoticeVersion and Ceiling are taken from c; the rest is filled in.
 func (s *Store) AddTrackingChoice(ctx context.Context, subscriberID int64, c TrackingChoice) (*TrackingChoice, error) {
-	return scanChoice(s.pool.QueryRow(ctx, `INSERT INTO tracking_choices
+	return insertChoice(ctx, s.pool, subscriberID, c)
+}
+
+// queryRower is the pool or a transaction.
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func insertChoice(ctx context.Context, q queryRower, subscriberID int64, c TrackingChoice) (*TrackingChoice, error) {
+	return scanChoice(q.QueryRow(ctx, `INSERT INTO tracking_choices
 		(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
 		SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1
 		RETURNING `+choiceColumns,
@@ -89,17 +98,22 @@ func (s *Store) TrackingChoices(ctx context.Context, subscriberID int64) ([]Trac
 // LatestTrackingChoice is the subscriber's state: the latest choice of their current
 // subscription, or ErrNotFound when they have made none in it (no Tracking consent).
 func (s *Store) LatestTrackingChoice(ctx context.Context, subscriberID int64) (*TrackingChoice, error) {
-	return scanChoice(s.pool.QueryRow(ctx, `SELECT `+prefixed("c.", choiceColumns)+`
-		FROM tracking_choices c JOIN subscribers s ON s.id = c.subscriber_id AND s.subscription = c.subscription
-		WHERE c.subscriber_id = $1 ORDER BY c.at DESC, c.id DESC LIMIT 1`, subscriberID))
+	return s.latestChoice(ctx, subscriberID, "")
 }
 
 // LatestTrackingRequest is the latest `requested` choice of the subscriber's current
 // subscription, or ErrNotFound.
 func (s *Store) LatestTrackingRequest(ctx context.Context, subscriberID int64) (*TrackingChoice, error) {
+	return s.latestChoice(ctx, subscriberID, Requested)
+}
+
+// latestChoice is the latest choice of the subscriber's current subscription, of kind when
+// kind is not empty.
+func (s *Store) latestChoice(ctx context.Context, subscriberID int64, kind ChoiceKind) (*TrackingChoice, error) {
 	return scanChoice(s.pool.QueryRow(ctx, `SELECT `+prefixed("c.", choiceColumns)+`
 		FROM tracking_choices c JOIN subscribers s ON s.id = c.subscriber_id AND s.subscription = c.subscription
-		WHERE c.subscriber_id = $1 AND c.kind = 'requested' ORDER BY c.at DESC, c.id DESC LIMIT 1`, subscriberID))
+		WHERE c.subscriber_id = $1 AND ($2 = '' OR c.kind = $2)
+		ORDER BY c.at DESC, c.id DESC LIMIT 1`, subscriberID, string(kind)))
 }
 
 // SetConfirmTracking records whether the latest request, the one the pending confirmation
@@ -158,7 +172,8 @@ func (s *Store) RequestTracking(ctx context.Context, id int64, confirmHash []byt
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		return insertChoice(ctx, tx, id, c)
+		_, err = insertChoice(ctx, tx, id, c)
+		return err
 	})
 }
 
@@ -182,14 +197,7 @@ func (s *Store) GiveTracking(ctx context.Context, id int64, confirmHash []byte, 
 		if tag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		return insertChoice(ctx, tx, id, c)
+		_, err = insertChoice(ctx, tx, id, c)
+		return err
 	})
-}
-
-func insertChoice(ctx context.Context, tx pgx.Tx, subscriberID int64, c TrackingChoice) error {
-	_, err := tx.Exec(ctx, `INSERT INTO tracking_choices
-		(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
-		SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1`,
-		subscriberID, c.Kind, c.At, c.Source, c.NoticeVersion, c.Ceiling.Opens, c.Ceiling.Links)
-	return err
 }

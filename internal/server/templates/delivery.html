@@ -1,6 +1,12 @@
 {{define "delivery"}}
 {{with .}}
-{{if .Tracking}}
+{{if and .Tracking .Ceiling}}
+  {{if .BelowCeiling}}
+  <div class="notice"><b>The sending domain allows less tracking than the Tracking ceiling:</b> it allows opens {{.Tracking.Opens}}, links {{.Tracking.Links}}; the ceiling asks for opens {{.Ceiling.Opens}}, links {{.Ceiling.Links}}. Every send is refused until it does: raise it with Kannon's SetTrackingPolicy, or lower the ceiling.</div>
+  {{else}}
+  <p class="muted">Tracking on the sending domain: opens {{.Tracking.Opens}}, links {{.Tracking.Links}}, enough for the Tracking ceiling.</p>
+  {{end}}
+{{else if .Tracking}}
   {{if .Tracking.Off}}
   <p class="muted">Tracking on the sending domain: opens off, links off.</p>
   {{else}}

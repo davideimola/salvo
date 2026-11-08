@@ -149,7 +149,7 @@ ones under [What readers see](#what-readers-see) and [Tracking](#tracking).
 | `KANNON_URL` | Kannon's API, e.g. `http://kannon.kannon.svc:50051` |
 | `KANNON_DOMAIN` | the Kannon Domain you send from, e.g. `news.example.org` |
 | `KANNON_API_KEY` | a Kannon API key for that Domain |
-| `KANNON_ADMIN_TOKEN` | optional: Kannon's admin token, so `/admin` shows the delivery counters and checks that the Domain's tracking is off. Kannon has no read-only credential; Salvo only reads with it |
+| `KANNON_ADMIN_TOKEN` | optional: Kannon's admin token, so `/admin` shows the delivery counters and checks the Domain's tracking. Required to send while a Tracking ceiling is raised: every send first checks that the Domain allows at least the ceiling, and is refused if it does not or cannot be asked. Kannon has no read-only credential; Salvo only reads with it |
 | `SENDER_EMAIL`, `SENDER_NAME` | who the issues come from, e.g. `hello@example.org`, `Ada Lovelace` |
 | `TEST_RECIPIENT` | where test sends go |
 | `OWNER_EMAIL` | the one Google account allowed into `/admin` |
@@ -186,6 +186,12 @@ and never beyond the ceiling in force when they gave it.
 | `NOTICE_VERSION` | the version of your privacy notice, recorded with every Tracking choice; required while a ceiling is raised | none |
 
 Any other mode refuses to start.
+
+Kannon rejects, one by one, every recipient above its Domain's own tracking policy. So while a
+ceiling is raised, every send first reads the Domain's policy (with `KANNON_ADMIN_TOKEN`) and is
+refused, before anything goes out, when the Domain allows less than the ceiling or Kannon does
+not answer: the issue goes back to draft with the reason. `/admin` warns about the mismatch
+before you try.
 
 ## Commands
 

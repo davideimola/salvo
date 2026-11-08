@@ -14,6 +14,12 @@
 </form>
 {{else}}
 <p>Your {{.What}} are not measured.</p>
+<p>If you agree to have them measured, we will email you a link: it counts only once you click it.</p>
+<form method="post" action="/preferences">
+  <input type="hidden" name="token" value="{{.Token}}">
+  <input type="hidden" name="action" value="allow">
+  <button type="submit">Measure my {{.What}}</button>
+</form>
 {{end}}
 <h2>Unsubscribe</h2>
 <p class="muted">To stop receiving the newsletter altogether, that is a separate step:

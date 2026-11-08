@@ -138,3 +138,58 @@ func (s *Store) ConsentsByNotice(ctx context.Context) ([]NoticeConsents, error) 
 	}
 	return out, rows.Err()
 }
+
+// SubscriberByTrackingConfirmHash returns the subscriber a tracking confirmation link was
+// mailed to.
+func (s *Store) SubscriberByTrackingConfirmHash(ctx context.Context, hash []byte) (*Subscriber, error) {
+	return scanSubscriber(s.pool.QueryRow(ctx, "SELECT "+subscriberColumns+" FROM subscribers WHERE tracking_confirm_hash = $1", hash))
+}
+
+// RequestTracking records a confirmed subscriber's `requested` choice and, in the same step,
+// arms the tracking confirmation link that answers it, replacing any earlier one. A
+// subscriber no longer confirmed records nothing and is ErrNotFound.
+func (s *Store) RequestTracking(ctx context.Context, id int64, confirmHash []byte, c TrackingChoice) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE subscribers SET tracking_confirm_hash = $2, tracking_confirm_sent_at = $3
+			WHERE id = $1 AND status = 'confirmed'`, id, confirmHash, c.At)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return insertChoice(ctx, tx, id, c)
+	})
+}
+
+// ClearTrackingConfirmSent forgets that a tracking confirmation went out, after Kannon refused
+// to send it, so the next request sends one rather than waiting out the cooldown.
+func (s *Store) ClearTrackingConfirmSent(ctx context.Context, id int64) error {
+	_, err := s.pool.Exec(ctx, "UPDATE subscribers SET tracking_confirm_sent_at = NULL WHERE id = $1", id)
+	return err
+}
+
+// GiveTracking records the `given` choice of a tracking confirmation click and, in the same
+// step, spends the link so it works once. A link already spent, or a subscriber no longer
+// confirmed, records nothing and is ErrNotFound.
+func (s *Store) GiveTracking(ctx context.Context, id int64, confirmHash []byte, c TrackingChoice) error {
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE subscribers SET tracking_confirm_hash = NULL
+			WHERE id = $1 AND tracking_confirm_hash = $2 AND status = 'confirmed'`, id, confirmHash)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		return insertChoice(ctx, tx, id, c)
+	})
+}
+
+func insertChoice(ctx context.Context, tx pgx.Tx, subscriberID int64, c TrackingChoice) error {
+	_, err := tx.Exec(ctx, `INSERT INTO tracking_choices
+		(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
+		SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1`,
+		subscriberID, c.Kind, c.At, c.Source, c.NoticeVersion, c.Ceiling.Opens, c.Ceiling.Links)
+	return err
+}

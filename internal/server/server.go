@@ -3,6 +3,7 @@
 //
 //	/api/...          bearer API_KEY      the website and its scripts
 //	/confirm          public              the link in the confirmation email
+//	/confirm-tracking public              the link in the tracking confirmation email
 //	/unsubscribe      public              the link in every issue, and the one-click POST
 //	/preferences      public              the Preferences page linked from every issue
 //	/admin/...        Google, one owner   the list and the issues
@@ -54,6 +55,7 @@ func New(svc *newsletter.Service, gate *owner.Gate, apiKey string) *Server {
 
 	s.mux.HandleFunc("GET /confirm", s.confirm)
 	s.mux.HandleFunc("GET /confirmed", s.confirmed)
+	s.mux.HandleFunc("GET /confirm-tracking", s.confirmTracking)
 	s.mux.HandleFunc("GET /unsubscribe", s.unsubscribePage)
 	s.mux.HandleFunc("POST /unsubscribe", s.unsubscribe)
 	s.mux.HandleFunc("GET /preferences", s.preferencesPage)

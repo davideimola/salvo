@@ -16,6 +16,9 @@
 //     recipient's policy; test sends and confirmation emails are never tracked.
 //   - Every issue links each Subscriber to their Preferences page, required while a ceiling is
 //     raised. Withdraw ends the Tracking consent and keeps the subscription.
+//   - A Subscriber already on the list asks for tracking from the Preferences page or the form
+//     with the box ticked; it counts only after the click in a tracking confirmation email,
+//     whose link works once and expires and is rate-limited like the confirmation link.
 package newsletter
 
 import (
@@ -136,7 +139,12 @@ func (s *Service) Subscribe(ctx context.Context, raw string, wantsTracking bool)
 	case err != nil:
 		return err
 	case sub.Status == store.Confirmed:
-		return nil
+		// Already on the list: a ticked box asks for tracking alone, and a blank one never
+		// withdraws a consent given.
+		if !wantsTracking {
+			return nil
+		}
+		return s.askTracking(ctx, sub, store.FromSubscribe)
 	case sub.Status == store.Pending && sub.ConfirmSentAt != nil && now.Sub(*sub.ConfirmSentAt) < ResendCooldown:
 		// No second email inside the cooldown, but the link already sent confirms this
 		// request: the latest choice is the one the click makes.

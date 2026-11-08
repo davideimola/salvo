@@ -128,15 +128,18 @@ type Subscriber struct {
 	// ConfirmTracking is whether the request the pending confirmation link answers asked for
 	// tracking.
 	ConfirmTracking bool
+	// TrackingConfirmSentAt is when the latest tracking confirmation email went out, nil for
+	// none.
+	TrackingConfirmSentAt *time.Time
 }
 
 const subscriberColumns = `id, email, status, confirm_token_hash, confirm_sent_at, unsubscribe_token,
-	source, created_at, confirmed_at, unsubscribed_at, subscription, confirm_tracking`
+	source, created_at, confirmed_at, unsubscribed_at, subscription, confirm_tracking, tracking_confirm_sent_at`
 
 func scanSubscriber(row pgx.Row) (*Subscriber, error) {
 	var s Subscriber
 	err := row.Scan(&s.ID, &s.Email, &s.Status, &s.ConfirmTokenHash, &s.ConfirmSentAt, &s.UnsubscribeToken,
-		&s.Source, &s.CreatedAt, &s.ConfirmedAt, &s.UnsubscribedAt, &s.Subscription, &s.ConfirmTracking)
+		&s.Source, &s.CreatedAt, &s.ConfirmedAt, &s.UnsubscribedAt, &s.Subscription, &s.ConfirmTracking, &s.TrackingConfirmSentAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -197,17 +200,13 @@ func (s *Store) Confirm(ctx context.Context, id int64, now time.Time, choice *Tr
 		if err != nil || tag.RowsAffected() == 0 || choice == nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO tracking_choices
-			(subscriber_id, subscription, kind, at, source, notice_version, opens_ceiling, links_ceiling)
-			SELECT id, subscription, $2, $3, $4, $5, $6, $7 FROM subscribers WHERE id = $1`,
-			id, choice.Kind, choice.At, choice.Source, choice.NoticeVersion, choice.Ceiling.Opens, choice.Ceiling.Links)
-		return err
+		return insertChoice(ctx, tx, id, *choice)
 	})
 }
 
 func (s *Store) Unsubscribe(ctx context.Context, id int64, now time.Time) error {
-	_, err := s.pool.Exec(ctx, `UPDATE subscribers SET status = 'unsubscribed', unsubscribed_at = $2
-		WHERE id = $1 AND status <> 'unsubscribed'`, id, now)
+	_, err := s.pool.Exec(ctx, `UPDATE subscribers SET status = 'unsubscribed', unsubscribed_at = $2,
+		tracking_confirm_hash = NULL WHERE id = $1 AND status <> 'unsubscribed'`, id, now)
 	return err
 }
 

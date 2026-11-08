@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/davideimola/salvo/internal/kannon"
 	"github.com/davideimola/salvo/internal/tracking"
@@ -122,5 +123,16 @@ func TestIssuePageSurvivesKannonNotAnsweringForEvents(t *testing.T) {
 	}
 	if strings.Contains(body, "Unique opens") {
 		t.Error("shares shown without events to compute them")
+	}
+}
+
+func TestDeliveryPanelDoesNotWarnAboutOpensWhenTheCeilingIsRaised(t *testing.T) {
+	e := withDelivery(t, &delivery{
+		tracking: kannon.Tracking{Opens: kannon.ModePseudonymous, Links: kannon.ModePseudonymous},
+		counts:   []kannon.Count{{Type: "opened", At: time.Now(), Count: 4}},
+	})
+	e.svc.Ceiling = tracking.Policy{Opens: tracking.Pseudonymous, Links: tracking.Off}
+	if body := e.ownerGet(t, "/admin"); strings.Contains(body, "opens or clicks") {
+		t.Errorf("a warning about counted opens with a raised ceiling:\n%s", body)
 	}
 }

@@ -63,6 +63,21 @@ func (p Policy) Raised() bool {
 	return p.Opens.rank() > 0 || p.Links.rank() > 0
 }
 
+// Measures names what the policy measures, in a reader's words: "opens and clicks", "opens",
+// "clicks", or "" for nothing.
+func (p Policy) Measures() string {
+	opens, links := p.Opens.rank() > 0, p.Links.rank() > 0
+	switch {
+	case opens && links:
+		return "opens and clicks"
+	case opens:
+		return "opens"
+	case links:
+		return "clicks"
+	}
+	return ""
+}
+
 // Min is the lower of two policies, axis by axis.
 func (p Policy) Min(q Policy) Policy {
 	return Policy{Opens: Min(p.Opens, q.Opens), Links: Min(p.Links, q.Links)}

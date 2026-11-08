@@ -105,7 +105,7 @@ func (s *Service) sendTrackingConfirmation(ctx context.Context, email, token str
 		return err
 	}
 	_, err = s.Mailer.Send(ctx, kannon.Message{
-		Subject:    "Confirm that " + id.Name + " may measure your " + measured(s.Ceiling),
+		Subject:    "Confirm that " + id.Name + " may measure your " + s.Ceiling.Measures(),
 		HTML:       html,
 		Recipients: []kannon.Recipient{{Email: email}},
 	})
@@ -142,6 +142,6 @@ func renderTrackingConfirmation(id Identity, confirmURL string, ceiling tracking
 	var b bytes.Buffer
 	err := trackingConfirmationTemplate.Execute(&b, struct {
 		Header, Name, SignOff, PrivacyURL, ConfirmURL, Measured string
-	}{header, id.Name, id.SignOff, id.PrivacyURL, confirmURL, measured(ceiling)})
+	}{header, id.Name, id.SignOff, id.PrivacyURL, confirmURL, ceiling.Measures()})
 	return b.String(), err
 }

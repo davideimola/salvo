@@ -41,20 +41,6 @@ func renderConfirmation(id Identity, confirmURL string, ceiling tracking.Policy,
 	err := confirmationTemplate.Execute(&b, struct {
 		Header, About, SignOff, PrivacyURL, ConfirmURL, Measured string
 		Requested                                                bool
-	}{header, id.About, id.SignOff, id.PrivacyURL, confirmURL, measured(ceiling), requested})
+	}{header, id.About, id.SignOff, id.PrivacyURL, confirmURL, ceiling.Measures(), requested})
 	return b.String(), err
-}
-
-// measured names what a ceiling measures, in a reader's words, or "" for nothing.
-func measured(p tracking.Policy) string {
-	opens, links := p.Opens == tracking.Pseudonymous, p.Links == tracking.Pseudonymous
-	switch {
-	case opens && links:
-		return "opens and clicks"
-	case opens:
-		return "opens"
-	case links:
-		return "clicks"
-	}
-	return ""
 }

@@ -53,13 +53,7 @@ func measurable(ps ...tracking.Policy) string {
 			break
 		}
 	}
-	switch {
-	case c.Opens != tracking.Off && c.Links != tracking.Off:
-		return "opens and clicks"
-	case c.Opens != tracking.Off:
-		return "opens"
-	}
-	return "clicks"
+	return c.Measures()
 }
 
 // preferences takes the page's one button. Each action is its own form value, so the

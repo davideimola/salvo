@@ -110,9 +110,6 @@ func TestAnInvalidPreferencesTokenIsAnInvalidLink(t *testing.T) {
 		if _, err := svc.Preferences(ctx, token); !errors.Is(err, newsletter.ErrInvalidLink) {
 			t.Errorf("Preferences(%q): err = %v", token, err)
 		}
-		if err := svc.Withdraw(ctx, token); !errors.Is(err, newsletter.ErrInvalidLink) {
-			t.Errorf("Withdraw(%q): err = %v", token, err)
-		}
 	}
 }
 
@@ -124,7 +121,7 @@ func TestWithdrawKeepsTheSubscriberAndStopsTheTracking(t *testing.T) {
 	token := unsubscribeToken(t, svc, "yes@example.org")
 
 	c.advance(time.Hour)
-	if err := svc.Withdraw(ctx, token); err != nil {
+	if err := withdraw(svc, token); err != nil {
 		t.Fatal(err)
 	}
 	cs := choices(t, svc, "yes@example.org")
@@ -151,18 +148,17 @@ func TestWithdrawKeepsTheSubscriberAndStopsTheTracking(t *testing.T) {
 }
 
 func TestWithdrawWithoutATrackingConsentRecordsNothing(t *testing.T) {
-	ctx := context.Background()
 	svc, m, _ := setup(t)
 	raise(svc, both)
 	join(t, svc, m, "no@example.org", false)
 	token := unsubscribeToken(t, svc, "no@example.org")
-	if err := svc.Withdraw(ctx, token); err != nil {
+	if err := withdraw(svc, token); err != nil {
 		t.Fatal(err)
 	}
 	join(t, svc, m, "yes@example.org", true)
 	yes := unsubscribeToken(t, svc, "yes@example.org")
-	svc.Withdraw(ctx, yes)
-	svc.Withdraw(ctx, yes) // twice: one Withdraw is enough
+	withdraw(svc, yes)
+	withdraw(svc, yes) // twice: one Withdraw is enough
 	if got := kinds(choices(t, svc, "no@example.org")); got != "refused" {
 		t.Errorf("no consent: choices = %s", got)
 	}
@@ -185,4 +181,13 @@ func TestAnUnsubscribedAddressIsNotSubscribedOnItsPreferencesPage(t *testing.T) 
 	if p.Subscribed || p.Measured.Raised() {
 		t.Errorf("after Unsubscribe: %+v", p)
 	}
+}
+
+// withdraw reads the Subscriber's Preferences and withdraws, as the Preferences page does.
+func withdraw(svc *newsletter.Service, token string) error {
+	p, err := svc.Preferences(context.Background(), token)
+	if err != nil {
+		return err
+	}
+	return svc.Withdraw(context.Background(), p)
 }

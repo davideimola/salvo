@@ -52,17 +52,14 @@ func (s *Service) Preferences(ctx context.Context, token string) (*Preferences, 
 	return p, nil
 }
 
-// Withdraw ends the Subscriber's Tracking consent; they stay subscribed. Without a consent
-// to end, it records nothing, so a second press or a stale page adds no noise to the proof.
-func (s *Service) Withdraw(ctx context.Context, token string) error {
-	p, err := s.Preferences(ctx, token)
-	if err != nil {
-		return err
-	}
+// Withdraw ends the Tracking consent of the Subscriber whose Preferences p were just read;
+// they stay subscribed. Without a consent to end, it records nothing, so a second press or a
+// stale page, read again, adds no noise to the proof.
+func (s *Service) Withdraw(ctx context.Context, p *Preferences) error {
 	if !p.Consented() {
 		return nil
 	}
-	_, err = s.Store.AddTrackingChoice(ctx, p.subscriberID, s.choice(store.Withdrawn, store.FromPreferences))
+	_, err := s.Store.AddTrackingChoice(ctx, p.subscriberID, s.choice(store.Withdrawn, store.FromPreferences))
 	return err
 }
 

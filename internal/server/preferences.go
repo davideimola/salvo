@@ -60,58 +60,55 @@ func measurable(ps ...tracking.Policy) string {
 // tracking confirmation request can sit next to Withdraw without sharing its path.
 func (s *Server) preferences(w http.ResponseWriter, r *http.Request) {
 	token := r.PostFormValue("token")
-	switch r.PostFormValue("action") {
-	case "withdraw":
-		p, err := s.svc.Preferences(r.Context(), token)
-		if err != nil {
+	action := r.PostFormValue("action")
+	if action != "withdraw" && action != "allow" {
+		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	p, err := s.svc.Preferences(r.Context(), token)
+	if err != nil {
+		s.invalidUnsubscribe(w, err)
+		return
+	}
+	if !p.Subscribed {
+		s.notSubscribed(w, p.Email)
+		return
+	}
+	if action == "withdraw" {
+		if err := s.svc.Withdraw(r.Context(), p); err != nil {
 			s.invalidUnsubscribe(w, err)
 			return
 		}
-		if !p.Subscribed {
-			s.notSubscribed(w, p.Email)
-			return
-		}
-		if err := s.svc.Withdraw(r.Context(), token); err != nil {
-			s.invalidUnsubscribe(w, err)
-			return
-		}
-		s.page(w, http.StatusOK, "message", map[string]any{
+		s.page(w, http.StatusOK, "message", backToPreferences(token, map[string]any{
 			"Title": "Tracking stopped",
 			"Body":  "Your opens and clicks are no longer measured. You are still subscribed: the next issue will reach you as before.",
-			"Link":  "/preferences?token=" + token, "LinkText": "Back to your preferences",
-		})
-	case "allow":
-		p, err := s.svc.Preferences(r.Context(), token)
-		if err != nil {
-			s.invalidUnsubscribe(w, err)
-			return
-		}
-		if !p.Subscribed {
-			s.notSubscribed(w, p.Email)
-			return
-		}
-		err = s.svc.AllowTracking(r.Context(), token)
-		switch {
-		case errors.Is(err, newsletter.ErrTrackingOff):
-			http.Error(w, "this newsletter tracks nothing", http.StatusBadRequest)
-		case err != nil:
-			slog.Error("allow tracking", "err", err)
-			s.page(w, http.StatusBadGateway, "message", map[string]any{
-				"Title": "Something went wrong", "Body": "The email could not be sent. Nothing has changed; try again in a moment.",
-				"Link": "/preferences?token=" + token, "LinkText": "Back to your preferences",
-			})
-		default:
-			// A button alone gives nothing: the consent counts only after the click in the
-			// email, so a forwarded issue cannot consent for its recipient.
-			s.page(w, http.StatusOK, "message", map[string]any{
-				"Title": "Check your inbox",
-				"Body":  "We sent " + p.Email + " an email with a link. Your " + measurable(p.Ceiling) + " are measured only once you click it.",
-				"Link":  "/preferences?token=" + token, "LinkText": "Back to your preferences",
-			})
-		}
-	default:
-		http.Error(w, "unknown action", http.StatusBadRequest)
+		}))
+		return
 	}
+	err = s.svc.AllowTracking(r.Context(), token)
+	switch {
+	case errors.Is(err, newsletter.ErrTrackingOff):
+		http.Error(w, "this newsletter tracks nothing", http.StatusBadRequest)
+	case err != nil:
+		slog.Error("allow tracking", "err", err)
+		s.page(w, http.StatusBadGateway, "message", backToPreferences(token, map[string]any{
+			"Title": "Something went wrong", "Body": "The email could not be sent. Nothing has changed; try again in a moment.",
+		}))
+	default:
+		// A button alone gives nothing: the consent counts only after the click in the
+		// email, so a forwarded issue cannot consent for its recipient.
+		s.page(w, http.StatusOK, "message", backToPreferences(token, map[string]any{
+			"Title": "Check your inbox",
+			"Body":  "We sent " + p.Email + " an email with a link. Your " + measurable(p.Ceiling) + " are measured only once you click it.",
+		}))
+	}
+}
+
+// backToPreferences adds to a message page the link back to the reader's Preferences page.
+func backToPreferences(token string, data map[string]any) map[string]any {
+	data["Link"] = "/preferences?token=" + token
+	data["LinkText"] = "Back to your preferences"
+	return data
 }
 
 // confirmTracking is the link in the tracking confirmation email: its click gives the

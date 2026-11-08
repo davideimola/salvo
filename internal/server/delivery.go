@@ -36,7 +36,7 @@ type deliveryPanel struct {
 	Types    []string
 	Totals   []int64
 	Days     []deliveryRow
-	Tracked  int64 // opened + clicked: anything but zero is a fault
+	Measured int64 // opened + clicked: anything but zero, with both ceilings off, is a fault
 	Tracking *kannon.Tracking
 	// Ceiling is the Tracking ceiling, in Kannon's names, when one is raised: the Domain must
 	// allow at least it, rather than be off.
@@ -79,7 +79,7 @@ func (s *Server) deliveryFor(ctx context.Context, from, to time.Time, withDays b
 	days := map[string][]int64{}
 	for _, c := range counts {
 		if c.Type == "opened" || c.Type == "clicked" {
-			p.Tracked += c.Count
+			p.Measured += c.Count
 			continue
 		}
 		i, ok := index[c.Type]

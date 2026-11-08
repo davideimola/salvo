@@ -185,6 +185,16 @@ func (s *Service) choice(kind store.ChoiceKind, source store.ChoiceSource) store
 	return store.TrackingChoice{Kind: kind, At: s.Now(), Source: source, NoticeVersion: s.NoticeVersion, Ceiling: s.Ceiling}
 }
 
+// given is the `given` choice a click makes in answer to req, from where req was made. The
+// consent is held to the ceiling and notice of the request, the ones its email described, and
+// never above the current ceiling.
+func (s *Service) given(req *store.TrackingChoice) store.TrackingChoice {
+	c := s.choice(store.Given, req.Source)
+	c.NoticeVersion = req.NoticeVersion
+	c.Ceiling = req.Ceiling.Min(s.Ceiling)
+	return c
+}
+
 // Confirm turns the token of a confirmation link into a subscription. A link clicked twice
 // confirms once and succeeds both times. The same click gives the Tracking consent the
 // request asked for, or, while a ceiling is raised, records that it was refused.
@@ -212,17 +222,13 @@ func (s *Service) Confirm(ctx context.Context, token string) error {
 	return ErrInvalidLink
 }
 
-// confirmationChoice is the Tracking choice a confirmation click makes, or nil for none. A
-// consent given here is held to the ceiling and notice of the request it confirms, the ones
-// its confirmation email described, and never above the current ceiling.
+// confirmationChoice is the Tracking choice a confirmation click makes, or nil for none.
 func (s *Service) confirmationChoice(ctx context.Context, sub *store.Subscriber) (*store.TrackingChoice, error) {
 	if sub.ConfirmTracking {
 		req, err := s.Store.LatestTrackingRequest(ctx, sub.ID)
 		switch {
 		case err == nil:
-			given := s.choice(store.Given, store.FromSubscribe)
-			given.NoticeVersion = req.NoticeVersion
-			given.Ceiling = req.Ceiling.Min(s.Ceiling)
+			given := s.given(req)
 			return &given, nil
 		case !errors.Is(err, store.ErrNotFound):
 			return nil, err

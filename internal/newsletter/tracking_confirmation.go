@@ -61,9 +61,7 @@ func (s *Service) askTracking(ctx context.Context, sub *store.Subscriber, source
 }
 
 // ConfirmTracking turns the token of a tracking confirmation link into a Tracking consent.
-// The link works once, for ConfirmWindow, and only for the subscription it was mailed in. The
-// consent is held to the ceiling and notice of the request it confirms, the ones its email
-// described, and never above the current ceiling.
+// The link works once, for ConfirmWindow, and only for the subscription it was mailed in.
 func (s *Service) ConfirmTracking(ctx context.Context, token string) error {
 	hash := hashToken(token)
 	sub, err := s.Store.SubscriberByTrackingConfirmHash(ctx, hash)
@@ -86,10 +84,7 @@ func (s *Service) ConfirmTracking(ctx context.Context, token string) error {
 	if err != nil {
 		return err
 	}
-	given := s.choice(store.Given, req.Source)
-	given.NoticeVersion = req.NoticeVersion
-	given.Ceiling = req.Ceiling.Min(s.Ceiling)
-	err = s.Store.GiveTracking(ctx, sub.ID, hash, given)
+	err = s.Store.GiveTracking(ctx, sub.ID, hash, s.given(req))
 	if errors.Is(err, store.ErrNotFound) {
 		return ErrInvalidLink // spent by a click a moment earlier
 	}

@@ -302,3 +302,24 @@ func TestTheTrackingConfirmationEmailSaysWhatItAgreesTo(t *testing.T) {
 		t.Errorf("email names opens or carries an image:\n%s", email.HTML)
 	}
 }
+
+func TestResubscribingAndAskingForTrackingAtOnceSendsTheTrackingConfirmation(t *testing.T) {
+	ctx := context.Background()
+	svc, m, c := setup(t)
+	raise(svc, both)
+	asked(t, svc, m, "a@example.org")
+	svc.Unsubscribe(ctx, unsubscribeToken(t, svc, "a@example.org"))
+
+	c.advance(time.Minute)
+	join(t, svc, m, "a@example.org", false)
+	before := m.count()
+	if err := svc.AllowTracking(ctx, unsubscribeToken(t, svc, "a@example.org")); err != nil {
+		t.Fatal(err)
+	}
+	if m.count() != before+1 {
+		t.Fatalf("mailed %d, want the tracking confirmation email of the new subscription", m.count()-before)
+	}
+	if err := svc.ConfirmTracking(ctx, trackingToken(t, m.last())); err != nil {
+		t.Fatal(err)
+	}
+}

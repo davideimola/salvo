@@ -206,7 +206,7 @@ func (s *Store) Confirm(ctx context.Context, id int64, now time.Time, choice *Tr
 
 func (s *Store) Unsubscribe(ctx context.Context, id int64, now time.Time) error {
 	_, err := s.pool.Exec(ctx, `UPDATE subscribers SET status = 'unsubscribed', unsubscribed_at = $2,
-		tracking_confirm_hash = NULL WHERE id = $1 AND status <> 'unsubscribed'`, id, now)
+		tracking_confirm_hash = NULL, tracking_confirm_sent_at = NULL WHERE id = $1 AND status <> 'unsubscribed'`, id, now)
 	return err
 }
 

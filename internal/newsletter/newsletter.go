@@ -58,8 +58,11 @@ var (
 	// ErrTrackingOff is tracking asked for while every Tracking ceiling is `off`.
 	ErrTrackingOff = errors.New("tracking was asked for, but this newsletter tracks nothing")
 	// ErrDomainBelowCeiling is a send refused because Kannon's Domain allows less tracking
-	// than the Tracking ceiling, or could not be asked.
+	// than the Tracking ceiling.
 	ErrDomainBelowCeiling = errors.New("Kannon's Domain allows less tracking than the Tracking ceiling")
+	// ErrDomainUnchecked is a send refused because, with a Tracking ceiling raised, Kannon's
+	// Domain could not be checked: no admin token, or Kannon did not answer.
+	ErrDomainUnchecked = errors.New("Kannon's Domain could not be checked against the Tracking ceiling")
 )
 
 type Mailer interface {
@@ -370,11 +373,11 @@ func (s *Service) checkDomain(ctx context.Context) error {
 		return nil
 	}
 	if s.Domain == nil {
-		return fmt.Errorf("%w: the Domain cannot be checked without Kannon's admin token", ErrDomainBelowCeiling)
+		return fmt.Errorf("%w: no Kannon admin token", ErrDomainUnchecked)
 	}
 	got, err := s.Domain.DomainTracking(ctx)
 	if err != nil {
-		return fmt.Errorf("%w: Kannon did not answer the check of the Domain: %v", ErrDomainBelowCeiling, err)
+		return fmt.Errorf("%w: Kannon did not answer: %v", ErrDomainUnchecked, err)
 	}
 	if !got.Allows(s.Ceiling) {
 		want := kannon.PolicyTracking(s.Ceiling)

@@ -40,14 +40,14 @@ func readyToSend(t *testing.T, svc *newsletter.Service, m *mailer, c *clock) {
 	}
 }
 
-// refused asserts a send was refused before anything went out, the issue back to draft with
-// a reason containing want.
-func refused(t *testing.T, svc *newsletter.Service, m *mailer, want string) {
+// refused asserts a send was refused with wantErr before anything went out, the issue back to
+// draft with a reason containing want.
+func refused(t *testing.T, svc *newsletter.Service, m *mailer, wantErr error, want string) {
 	t.Helper()
 	ctx := context.Background()
 	before := m.count()
-	if _, err := svc.Send(ctx, "2026-11"); !errors.Is(err, newsletter.ErrDomainBelowCeiling) {
-		t.Fatalf("send: err = %v, want ErrDomainBelowCeiling", err)
+	if _, err := svc.Send(ctx, "2026-11"); !errors.Is(err, wantErr) {
+		t.Fatalf("send: err = %v, want %v", err, wantErr)
 	}
 	if m.count() != before {
 		t.Error("something went out")
@@ -76,7 +76,7 @@ func TestASendIsRefusedWhenTheDomainAllowsLessThanTheCeiling(t *testing.T) {
 			raise(svc, both)
 			svc.Domain = &domain{tracking: tc.domain}
 			readyToSend(t, svc, m, c)
-			refused(t, svc, m, "Domain")
+			refused(t, svc, m, newsletter.ErrDomainBelowCeiling, "Domain")
 		})
 	}
 }
@@ -127,7 +127,8 @@ func TestAKannonThatDoesNotAnswerTheCheckRefusesTheSend(t *testing.T) {
 	svc.Domain = &domain{err: errors.New("connection refused")}
 	raise(svc, both)
 	readyToSend(t, svc, m, c)
-	refused(t, svc, m, "connection refused")
+	refused(t, svc, m, newsletter.ErrDomainUnchecked, "connection refused")
+	unclaimed(t, svc)
 }
 
 func TestARaisedCeilingWithoutADomainToCheckRefusesTheSend(t *testing.T) {
@@ -135,7 +136,8 @@ func TestARaisedCeilingWithoutADomainToCheckRefusesTheSend(t *testing.T) {
 	raise(svc, both)
 	svc.Domain = nil
 	readyToSend(t, svc, m, c)
-	refused(t, svc, m, "admin token")
+	refused(t, svc, m, newsletter.ErrDomainUnchecked, "admin token")
+	unclaimed(t, svc)
 }
 
 func TestARefusedSendCanBeRetriedOnceTheDomainIsFixed(t *testing.T) {
@@ -144,10 +146,22 @@ func TestARefusedSendCanBeRetriedOnceTheDomainIsFixed(t *testing.T) {
 	svc.Domain = d
 	raise(svc, both)
 	readyToSend(t, svc, m, c)
-	refused(t, svc, m, "Domain")
+	refused(t, svc, m, newsletter.ErrDomainBelowCeiling, "Domain")
 
 	d.tracking = pseudoDomain
 	if _, err := svc.Send(context.Background(), "2026-11"); err != nil {
 		t.Fatalf("retry: %v", err)
+	}
+}
+
+// unclaimed fails when the reason of a refused send claims a mismatch nobody observed.
+func unclaimed(t *testing.T, svc *newsletter.Service) {
+	t.Helper()
+	issue, err := svc.Store.Issue(context.Background(), "2026-11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(*issue.LastError, "allows less") {
+		t.Errorf("reason %q claims a mismatch that was never observed", *issue.LastError)
 	}
 }

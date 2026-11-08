@@ -1,6 +1,7 @@
 {{define "engagement"}}
 <h2>Opens and clicks</h2>
 {{if .Error}}<div class="notice">{{.Error}}</div>{{end}}
+<p>Tracked recipients: <b>{{.Tracked}}</b>, with Tracking consent when the issue went out.</p>
 {{range .Metrics}}
 {{if .Over}}<div class="notice"><b>Kannon measured {{.Unique}} distinct {{.Who}}, more than the {{$.Tracked}} Tracked {{if eq $.Tracked 1}}recipient{{else}}recipients{{end}}.</b> Someone without Tracking consent was measured: check the Domain's policy and each recipient's.</div>{{end}}
 {{end}}

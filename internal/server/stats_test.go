@@ -136,3 +136,23 @@ func TestDeliveryPanelDoesNotWarnAboutOpensWhenTheCeilingIsRaised(t *testing.T) 
 		t.Errorf("a warning about counted opens with a raised ceiling:\n%s", body)
 	}
 }
+
+func TestIssuePageShowsTheTrackedRecipientsWithoutKannonToRead(t *testing.T) {
+	e := setup(t)
+	sendTracked(t, e, []string{"a@example.org", "b@example.org"}, []string{"c@example.org"})
+
+	body := e.ownerGet(t, "/admin/issues/2026-11")
+	for _, want := range []string{
+		"Tracked recipients: <b>2</b>",
+		"Not measured: <b>1</b> recipient without Tracking consent",
+		"Apple Mail Privacy Protection",
+		"Kannon cannot be read",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("the issue page lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Unique opens") {
+		t.Error("shares shown without events to compute them")
+	}
+}

@@ -33,13 +33,21 @@ var engagementTypes = []struct{ Type, Name, Who string }{
 }
 
 // engagementFor reads a sent issue's opens and clicks from Kannon. Like the delivery panel it
-// never fails the page: a Kannon that does not answer becomes a line on it.
+// never fails the page: a Kannon that does not answer becomes a line on it. Without Kannon to
+// read, an issue sent with tracking still shows its Tracked recipients, from what Salvo stored.
 func (s *Server) engagementFor(ctx context.Context, issue *store.Issue) *engagementPanel {
-	if s.delivery == nil || issue.SentAt == nil || issue.KannonMessageID == nil {
+	if issue.SentAt == nil || issue.KannonMessageID == nil {
 		return nil
 	}
 	p := &engagementPanel{Tracked: countOf(issue.TrackedRecipients)}
 	p.NotMeasured = countOf(issue.Recipients) - p.Tracked
+	if s.delivery == nil {
+		if p.Tracked == 0 && !s.svc.Ceiling.Raised() {
+			return nil
+		}
+		p.Error = "Kannon cannot be read: without a Kannon admin token Salvo shows no opens or clicks."
+		return p
+	}
 	for _, et := range engagementTypes {
 		events, err := s.delivery.Events(ctx, s.kannonDomain, kannon.EventQuery{
 			BatchID: *issue.KannonMessageID, Type: et.Type,

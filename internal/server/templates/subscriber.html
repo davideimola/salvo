@@ -11,6 +11,30 @@
 </dl>
 {{end}}
 
+{{if .ShowTracking}}
+<h2>Tracking choices</h2>
+{{if .Choices}}
+<p class="muted">Every choice the address made about tracking, oldest first, with the notice and the Tracking ceiling in force. The latest choice of the current subscription is its state; choices from an earlier subscription stay as proof and count for nothing.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Choice</th><th>When</th><th>Source</th><th>Notice version</th><th>Ceiling</th></tr>
+  {{$current := .Subscriber.Subscription}}
+  {{range .Choices}}
+  <tr>
+    <td><span class="pill">{{.Kind}}</span>{{if ne .Subscription $current}} <span class="muted">earlier subscription</span>{{end}}</td>
+    <td class="mono">{{date .At}}</td>
+    <td class="mono">{{.Source}}</td>
+    <td class="mono">{{.NoticeVersion}}</td>
+    <td>opens {{.Ceiling.Opens}}, links {{.Ceiling.Links}}</td>
+  </tr>
+  {{end}}
+</table>
+</div>
+{{else}}
+<p class="muted">No choice yet: no Tracking consent, so this address is not tracked.</p>
+{{end}}
+{{end}}
+
 <h2>Delete</h2>
 <div class="box">
   <p>Deletes the address and everything stored about it, as a subscriber can ask. It cannot be undone, and nothing is left to stop the address subscribing again through the form.</p>

@@ -1,9 +1,10 @@
 // Package kannon sends mail through Kannon's Mailer API (github.com/kannon-email/kannon).
 //
 // Kannon speaks Connect, so a call is a JSON POST to /<service>/<method>. Only SendHTML is
-// used. Every call states a Tracking Policy of `off` for opens and links, although the
-// Domain's own policy is already `off`: the Domain is the ceiling, and saying it here too
-// means a Domain changed by mistake still tracks nothing that this service sends.
+// used. Every call states a batch Tracking Policy, `off` unless the message asks for more,
+// although the Domain is already the ceiling: saying it here too means a Domain changed by
+// mistake still tracks nothing this service did not ask for. A recipient may carry a policy
+// of its own; Kannon applies the most restrictive of Domain, batch and recipient.
 package kannon
 
 import (
@@ -34,6 +35,9 @@ type Sender struct {
 type Recipient struct {
 	Email  string            `json:"email"`
 	Fields map[string]string `json:"fields,omitempty"`
+	// Tracking, when set, is this recipient's own Tracking Policy. Left nil, the recipient
+	// gets the batch's, so a send that tracks anyone must set it for everyone, `off` included.
+	Tracking *Tracking `json:"tracking,omitempty"`
 }
 
 type Message struct {
@@ -44,6 +48,8 @@ type Message struct {
 	// https://news.example.com/unsubscribe?token={{ token }}. Empty for mail that is not
 	// the newsletter itself, like the confirmation email.
 	UnsubscribeURL string
+	// Tracking is the batch's Tracking Policy. A mode left empty is sent as `off`.
+	Tracking Tracking
 }
 
 type Result struct {
@@ -57,17 +63,12 @@ type Rejected struct {
 	Reason string `json:"reason"`
 }
 
-type off struct {
-	Opens string `json:"opens"`
-	Links string `json:"links"`
-}
-
 type sendHTMLReq struct {
 	Sender      Sender      `json:"sender"`
 	Subject     string      `json:"subject"`
 	HTML        string      `json:"html"`
 	Recipients  []Recipient `json:"recipients"`
-	Tracking    off         `json:"tracking"`
+	Tracking    Tracking    `json:"tracking"`
 	Unsubscribe *struct {
 		URLTemplate string `json:"urlTemplate"`
 	} `json:"oneClickUnsubscribe,omitempty"`
@@ -85,7 +86,7 @@ func (c *Client) Send(ctx context.Context, m Message) (*Result, error) {
 		Subject:    m.Subject,
 		HTML:       m.HTML,
 		Recipients: m.Recipients,
-		Tracking:   off{Opens: "TRACKING_MODE_OFF", Links: "TRACKING_MODE_OFF"},
+		Tracking:   m.Tracking.orOff(),
 	}
 	if m.UnsubscribeURL != "" {
 		req.Unsubscribe = &struct {

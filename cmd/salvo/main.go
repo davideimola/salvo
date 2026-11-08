@@ -154,7 +154,9 @@ func serve(ctx context.Context) error {
 			ConfirmedURL:   cfg.ConfirmedURL,
 			PrivacyURL:     cfg.PrivacyURL,
 		},
-		Now: time.Now,
+		Ceiling:       cfg.TrackingCeiling,
+		NoticeVersion: cfg.NoticeVersion,
+		Now:           time.Now,
 	}
 	google, err := owner.NewGoogle(ctx, cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.PublicURL+"/auth/callback")
 	if err != nil {
@@ -173,7 +175,9 @@ func serve(ctx context.Context) error {
 
 	handler := server.New(svc, gate, cfg.APIKey)
 	if cfg.KannonAdminToken != "" {
-		handler.WithDelivery(&kannon.Admin{URL: cfg.KannonURL, Token: cfg.KannonAdminToken}, cfg.KannonDomain)
+		admin := &kannon.Admin{URL: cfg.KannonURL, Token: cfg.KannonAdminToken}
+		svc.Domain = kannon.DomainPolicy{Admin: admin, Domain: cfg.KannonDomain}
+		handler.WithDelivery(admin, cfg.KannonDomain)
 	}
 	srv := &http.Server{
 		Addr:              cfg.Listen,

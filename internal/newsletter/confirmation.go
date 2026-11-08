@@ -3,6 +3,8 @@ package newsletter
 import (
 	"bytes"
 	"html/template"
+
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 // The confirmation email. Inline styles only, because that is what mail clients keep, in a
@@ -21,20 +23,24 @@ var confirmationTemplate = template.Must(template.New("confirmation").Parse(`<!d
 <p style="margin:0 0 16px;font-size:14px;color:#3B4152;">Or paste this link into your browser:<br><a href="{{.ConfirmURL}}" style="color:#1C2233;word-break:break-all;">{{.ConfirmURL}}</a></p>
 <p style="margin:0 0 16px;">Didn't sign up? Ignore this email and nothing happens: the link stops working in seven days, and the address is deleted within 30.</p>
 {{if .SignOff}}<p style="margin:0 0 16px;">{{.SignOff}}</p>
-{{end}}<p style="margin:32px 0 0;font-size:13px;color:#5B6070;">The newsletter carries no tracking pixel and no tracked links.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" style="color:#5B6070;">Privacy</a>{{end}}</p>
+{{end}}<p style="margin:32px 0 0;font-size:13px;color:#5B6070;">{{if .Measured}}The newsletter measures {{.Measured}} for each issue, only for readers who agree to it.{{if .Requested}} You asked to be measured: confirming also agrees to it. You can withdraw at any time and stay subscribed.{{end}}{{else}}The newsletter carries no tracking pixel and no tracked links.{{end}}{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" style="color:#5B6070;">Privacy</a>{{end}}</p>
 </div>
 </body>
 </html>
 `))
 
-func renderConfirmation(id Identity, confirmURL string) (string, error) {
+// renderConfirmation writes the confirmation email. Its closing line says what the
+// newsletter measures under the ceiling and, when the request asked for tracking, that
+// confirming agrees to it.
+func renderConfirmation(id Identity, confirmURL string, ceiling tracking.Policy, requested bool) (string, error) {
 	header := id.Sender
 	if header == "" {
 		header = id.Name
 	}
 	var b bytes.Buffer
 	err := confirmationTemplate.Execute(&b, struct {
-		Header, About, SignOff, PrivacyURL, ConfirmURL string
-	}{header, id.About, id.SignOff, id.PrivacyURL, confirmURL})
+		Header, About, SignOff, PrivacyURL, ConfirmURL, Measured string
+		Requested                                                bool
+	}{header, id.About, id.SignOff, id.PrivacyURL, confirmURL, ceiling.Measures(), requested})
 	return b.String(), err
 }

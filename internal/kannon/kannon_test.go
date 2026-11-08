@@ -86,3 +86,63 @@ func TestRefusal(t *testing.T) {
 		t.Fatalf("err = %v, want a RefusedError with 401", err)
 	}
 }
+
+func TestSendStatesTrackingPerRecipient(t *testing.T) {
+	var got struct {
+		Tracking   map[string]string `json:"tracking"`
+		Recipients []struct {
+			Email    string            `json:"email"`
+			Tracking map[string]string `json:"tracking"`
+		} `json:"recipients"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"messageId":"m","acceptedCount":2}`))
+	}))
+	defer srv.Close()
+	c := &kannon.Client{URL: srv.URL, Domain: "d", APIKey: "k"}
+	pseudo := kannon.Tracking{Opens: kannon.ModePseudonymous, Links: kannon.ModePseudonymous}
+	_, err := c.Send(context.Background(), kannon.Message{
+		Tracking: pseudo,
+		Recipients: []kannon.Recipient{
+			{Email: "yes@example.org", Tracking: &kannon.Tracking{Opens: kannon.ModeOff, Links: kannon.ModePseudonymous}},
+			{Email: "no@example.org", Tracking: &kannon.Tracking{Opens: kannon.ModeOff, Links: kannon.ModeOff}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Tracking["opens"] != "TRACKING_MODE_PSEUDONYMOUS" || got.Tracking["links"] != "TRACKING_MODE_PSEUDONYMOUS" {
+		t.Errorf("batch tracking = %v", got.Tracking)
+	}
+	if len(got.Recipients) != 2 {
+		t.Fatalf("recipients = %+v", got.Recipients)
+	}
+	if r := got.Recipients[0].Tracking; r["opens"] != "TRACKING_MODE_OFF" || r["links"] != "TRACKING_MODE_PSEUDONYMOUS" {
+		t.Errorf("yes@ tracking = %v", r)
+	}
+	if r := got.Recipients[1].Tracking; r["opens"] != "TRACKING_MODE_OFF" || r["links"] != "TRACKING_MODE_OFF" {
+		t.Errorf("no@ tracking = %v, want both off stated explicitly", r)
+	}
+}
+
+func TestNoPerRecipientTrackingWhenNotGiven(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"messageId":"m","acceptedCount":1}`))
+	}))
+	defer srv.Close()
+	c := &kannon.Client{URL: srv.URL, Domain: "d", APIKey: "k"}
+	if _, err := c.Send(context.Background(), kannon.Message{Recipients: []kannon.Recipient{{Email: "a@example.org"}}}); err != nil {
+		t.Fatal(err)
+	}
+	r := got["recipients"].([]any)[0].(map[string]any)
+	if _, ok := r["tracking"]; ok {
+		t.Errorf("recipient = %v, want no tracking field", r)
+	}
+	tracking, _ := got["tracking"].(map[string]any)
+	if tracking["opens"] != "TRACKING_MODE_OFF" || tracking["links"] != "TRACKING_MODE_OFF" {
+		t.Errorf("batch tracking = %v, want both off by default", tracking)
+	}
+}

@@ -20,6 +20,7 @@ import (
 	"github.com/davideimola/salvo/internal/server"
 	"github.com/davideimola/salvo/internal/store"
 	"github.com/davideimola/salvo/internal/store/storetest"
+	"github.com/davideimola/salvo/internal/tracking"
 )
 
 const (
@@ -226,7 +227,7 @@ func TestAdminIsTheOwnersOnly(t *testing.T) {
 func TestAdminSendsAfterTypedConfirmation(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	e.svc.Subscribe(ctx, "a@example.org")
+	e.svc.Subscribe(ctx, "a@example.org", false)
 	e.svc.Confirm(ctx, tokenIn.FindStringSubmatch(e.mail.last().HTML)[1])
 	e.svc.SaveIssue(ctx, "2026-11", "November", `<a href="{{ unsubscribe_url }}">u</a>`)
 	e.now = e.now.Add(time.Minute)
@@ -277,7 +278,7 @@ func TestAdminSendsAfterTypedConfirmation(t *testing.T) {
 func TestAdminErase(t *testing.T) {
 	e := setup(t)
 	ctx := context.Background()
-	e.svc.Subscribe(ctx, "a@example.org")
+	e.svc.Subscribe(ctx, "a@example.org", false)
 	sub, _ := e.svc.Store.SubscriberByEmail(ctx, "a@example.org")
 
 	session := e.gate.SessionCookie()
@@ -297,9 +298,20 @@ func TestAdminErase(t *testing.T) {
 
 // delivery stands in for Kannon's Admin and Stats APIs.
 type delivery struct {
-	counts   []kannon.Count
-	tracking kannon.Tracking
-	err      error
+	counts    []kannon.Count
+	tracking  kannon.Tracking
+	err       error
+	events    map[string][]kannon.Event // by type
+	eventsErr error
+	queries   []kannon.EventQuery
+}
+
+func (d *delivery) Events(_ context.Context, _ string, q kannon.EventQuery) ([]kannon.Event, error) {
+	d.queries = append(d.queries, q)
+	if d.eventsErr != nil {
+		return nil, d.eventsErr
+	}
+	return d.events[q.Type], nil
 }
 
 func (d *delivery) AggregatedStats(context.Context, string, time.Time, time.Time) ([]kannon.Count, error) {
@@ -394,5 +406,39 @@ func TestSignInPage(t *testing.T) {
 	f, _ := noRedirect().Get(e.srv.URL + "/favicon.svg")
 	if f.StatusCode != http.StatusOK || f.Header.Get("Content-Type") != "image/svg+xml" || !strings.Contains(read(t, f), "<svg") {
 		t.Errorf("favicon: %d %s", f.StatusCode, f.Header.Get("Content-Type"))
+	}
+}
+
+func TestSubscribeAPITrackingField(t *testing.T) {
+	e := setup(t)
+	resp := e.api(t, "POST", "/api/subscribers", apiKey, `{"email":"a@example.org","tracking":true}`)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(read(t, resp), "tracking_off") {
+		t.Fatalf("tracking asked for while every ceiling is off: %d, want 400 tracking_off", resp.StatusCode)
+	}
+	if e.mail.count() != 0 {
+		t.Fatal("mail sent for a refused request")
+	}
+	if r := e.api(t, "POST", "/api/subscribers", apiKey, `{"email":"a@example.org","tracking":false}`); r.StatusCode != http.StatusAccepted {
+		t.Errorf("tracking false while off: %d, want 202", r.StatusCode)
+	}
+
+	e.svc.Ceiling = tracking.Policy{Opens: tracking.Off, Links: tracking.Pseudonymous}
+	e.svc.NoticeVersion = "1"
+	for _, body := range []string{
+		`{"email":"b@example.org","tracking":true}`, // new
+		`{"email":"b@example.org","tracking":true}`, // waiting
+		`{"email":"a@example.org","tracking":true}`, // waiting, unticked before
+		`{"email":"c@example.org"}`,                 // no field
+	} {
+		r := e.api(t, "POST", "/api/subscribers", apiKey, body)
+		if r.StatusCode != http.StatusAccepted || read(t, r) != `{"status":"check_your_inbox"}`+"\n" {
+			t.Errorf("%s: %d, want the same 202 for every address state", body, r.StatusCode)
+		}
+	}
+	confirm := tokenIn.FindStringSubmatch(e.mail.last().HTML)[1]
+	e.svc.Confirm(context.Background(), confirm)
+	r := e.api(t, "POST", "/api/subscribers", apiKey, `{"email":"c@example.org","tracking":true}`) // confirmed
+	if r.StatusCode != http.StatusAccepted {
+		t.Errorf("confirmed: %d, want 202", r.StatusCode)
 	}
 }

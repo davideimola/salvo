@@ -9,11 +9,12 @@ import (
 	"github.com/davideimola/salvo/internal/kannon"
 )
 
-// Delivery is what the admin pages read from Kannon: aggregated counters and the Domain's
-// Tracking Policy. Nothing in it names a recipient.
+// Delivery is what the admin pages read from Kannon: aggregated counters, the Domain's
+// Tracking Policy, and an issue's events, which Salvo only counts and never stores (ADR 0003).
 type Delivery interface {
 	AggregatedStats(ctx context.Context, domain string, from, to time.Time) ([]kannon.Count, error)
 	DomainTracking(ctx context.Context, domain string) (kannon.Tracking, error)
+	Events(ctx context.Context, domain string, q kannon.EventQuery) ([]kannon.Event, error)
 }
 
 // WithDelivery turns on the delivery panel. Without it the admin pages simply leave it out.
@@ -35,9 +36,15 @@ type deliveryPanel struct {
 	Types    []string
 	Totals   []int64
 	Days     []deliveryRow
-	Tracked  int64 // opened + clicked: anything but zero is a fault
+	Measured int64 // opened + clicked: anything but zero, with both ceilings off, is a fault
 	Tracking *kannon.Tracking
-	Error    string
+	// Ceiling is the Tracking ceiling, in Kannon's names, when one is raised: the Domain must
+	// allow at least it, rather than be off.
+	Ceiling *kannon.Tracking
+	// BelowCeiling is a Domain that allows less than the raised ceiling: every send is refused
+	// until it is fixed.
+	BelowCeiling bool
+	Error        string
 }
 
 // deliveryFor reads the counters between from and to, by day, newest first. It never fails
@@ -50,6 +57,11 @@ func (s *Server) deliveryFor(ctx context.Context, from, to time.Time, withDays b
 	tr, err := s.delivery.DomainTracking(ctx, s.kannonDomain)
 	if err == nil {
 		p.Tracking = &tr
+	}
+	if c := s.svc.Ceiling; c.Raised() {
+		ceiling := kannon.PolicyTracking(c)
+		p.Ceiling = &ceiling
+		p.BelowCeiling = err == nil && !tr.Allows(c)
 	}
 	counts, serr := s.delivery.AggregatedStats(ctx, s.kannonDomain, from, to)
 	if err == nil {
@@ -67,7 +79,7 @@ func (s *Server) deliveryFor(ctx context.Context, from, to time.Time, withDays b
 	days := map[string][]int64{}
 	for _, c := range counts {
 		if c.Type == "opened" || c.Type == "clicked" {
-			p.Tracked += c.Count
+			p.Measured += c.Count
 			continue
 		}
 		i, ok := index[c.Type]

@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>Your preferences</h1>
+<p>For <b>{{.Email}}</b>.</p>
+{{if not .Tracks}}
+<p>This newsletter tracks nothing: no tracking pixel and no tracked links, for anyone.</p>
+{{else if .Consented}}
+{{if .Measured}}<p>Your {{.What}} are measured, because you agreed to it.</p>
+{{else}}<p>Nothing of yours is measured now, but you have agreed to it.</p>{{end}}
+<p>You can withdraw that agreement here and keep receiving the newsletter.</p>
+<form method="post" action="/preferences">
+  <input type="hidden" name="token" value="{{.Token}}">
+  <input type="hidden" name="action" value="withdraw">
+  <button type="submit">Stop measuring me</button>
+</form>
+{{else}}
+<p>Your {{.What}} are not measured.</p>
+{{end}}
+<h2>Unsubscribe</h2>
+<p class="muted">To stop receiving the newsletter altogether, that is a separate step:
+<a href="/unsubscribe?token={{.Token}}">unsubscribe</a>.</p>
+{{end}}

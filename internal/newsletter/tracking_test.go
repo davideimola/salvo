@@ -60,7 +60,7 @@ func kinds(cs []store.TrackingChoice) string {
 func sendIssue(t *testing.T, svc *newsletter.Service, m *mailer, c *clock) (*store.Issue, kannon.Message) {
 	t.Helper()
 	ctx := context.Background()
-	if _, err := svc.SaveIssue(ctx, "2026-11", "November", issueHTML); err != nil {
+	if _, err := svc.SaveIssue(ctx, "2026-11", "November", trackedIssueHTML); err != nil {
 		t.Fatal(err)
 	}
 	c.advance(time.Minute)

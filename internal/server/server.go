@@ -4,6 +4,7 @@
 //	/api/...          bearer API_KEY      the website and its scripts
 //	/confirm          public              the link in the confirmation email
 //	/unsubscribe      public              the link in every issue, and the one-click POST
+//	/preferences      public              the Preferences page linked from every issue
 //	/admin/...        Google, one owner   the list and the issues
 //
 // The API can save an issue and test-send it, but it cannot send it to the list: the real send
@@ -55,6 +56,8 @@ func New(svc *newsletter.Service, gate *owner.Gate, apiKey string) *Server {
 	s.mux.HandleFunc("GET /confirmed", s.confirmed)
 	s.mux.HandleFunc("GET /unsubscribe", s.unsubscribePage)
 	s.mux.HandleFunc("POST /unsubscribe", s.unsubscribe)
+	s.mux.HandleFunc("GET /preferences", s.preferencesPage)
+	s.mux.HandleFunc("POST /preferences", s.preferences)
 
 	s.mux.HandleFunc("GET /auth/login", gate.Login)
 	s.mux.HandleFunc("GET /auth/callback", gate.Callback)
@@ -218,6 +221,8 @@ func (s *Server) issueError(w http.ResponseWriter, err error) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_issue"})
 	case errors.Is(err, newsletter.ErrNoUnsubscribeLink):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no_unsubscribe_url"})
+	case errors.Is(err, newsletter.ErrNoPreferencesLink):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no_preferences_url"})
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
 	case errors.Is(err, store.ErrAlreadySent), errors.Is(err, store.ErrSending):
@@ -278,10 +283,7 @@ func (s *Server) unsubscribePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if sub.Status != store.Confirmed {
-		s.page(w, http.StatusOK, "message", map[string]any{
-			"Title": "You are not subscribed",
-			"Body":  sub.Email + " is not on the list, so no issue goes to it.",
-		})
+		s.notSubscribed(w, sub.Email)
 		return
 	}
 	s.page(w, http.StatusOK, "unsubscribe", map[string]any{"Email": sub.Email, "Token": token})
@@ -317,6 +319,13 @@ func (s *Server) unsubscribe(w http.ResponseWriter, r *http.Request) {
 		"Title": "You are unsubscribed",
 		"Body":  "No more issues will reach you. Thank you for reading.",
 		"Link":  s.svc.SiteURL, "LinkText": "Back to " + s.svc.SiteName(),
+	})
+}
+
+func (s *Server) notSubscribed(w http.ResponseWriter, email string) {
+	s.page(w, http.StatusOK, "message", map[string]any{
+		"Title": "You are not subscribed",
+		"Body":  email + " is not on the list, so no issue goes to it.",
 	})
 }
 

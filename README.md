@@ -118,19 +118,24 @@ curl -X POST "$PUBLIC_URL/api/issues/2026-11/test" -H "Authorization: Bearer $AP
 
 The HTML is yours to render, footer included. Wherever a reader's unsubscribe link goes, write
 `{{ unsubscribe_url }}`, and Kannon fills it in for each reader. Salvo refuses an issue without
-it. When the test looks right, open `/admin` and send it.
+it. Likewise `{{ preferences_url }}` is each reader's Preferences page, where they see whether
+they are tracked and can Withdraw while staying subscribed: optional while both Tracking
+ceilings are `off`, required as soon as one is raised. When the test looks right, open `/admin`
+and send it.
 
 ## HTTP
 
 | Route | Who | What |
 |---|---|---|
 | `POST /api/subscribers` `{"email","tracking"}` | website, `Authorization: Bearer API_KEY` | start the double opt-in, asking for a Tracking consent too when `tracking` is `true`; `202` whatever the address's state, `400` for an invalid address or for `tracking` while every ceiling is `off` |
-| `PUT /api/issues/{slug}` `{"subject","html"}` | website | save or replace a draft; the HTML must contain `{{ unsubscribe_url }}` |
+| `PUT /api/issues/{slug}` `{"subject","html"}` | website | save or replace a draft; the HTML must contain `{{ unsubscribe_url }}`, and `{{ preferences_url }}` while a ceiling is raised |
 | `POST /api/issues/{slug}/test` | website | send the draft to `TEST_RECIPIENT` |
 | `GET /confirm?token=` | reader | confirm, then redirect to `CONFIRMED_URL` |
 | `GET /confirmed` | reader | Salvo's own "you're in" page, where `CONFIRMED_URL` points by default |
 | `GET /unsubscribe?token=` | reader | a page with an Unsubscribe button |
 | `POST /unsubscribe?token=` | reader, mail client | unsubscribe; `List-Unsubscribe=One-Click` is the RFC 8058 form |
+| `GET /preferences?token=` | reader | the Preferences page: whether opens and clicks are measured; changes nothing |
+| `POST /preferences` `token`, `action=withdraw` | reader | Withdraw the Tracking consent and stay subscribed |
 | `/admin` | owner, signed in with Google | subscribers, issues, preview, test, send, delete, delivery counters |
 | `GET /healthz` | your orchestrator | `200` when the database answers |
 

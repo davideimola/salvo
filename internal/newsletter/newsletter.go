@@ -14,6 +14,8 @@
 //     only with a Tracking consent, given by a confirmation click, and never beyond the lower
 //     of the ceiling it was given under and the current one. Every real send states every
 //     recipient's policy; test sends and confirmation emails are never tracked.
+//   - Every issue links each Subscriber to their Preferences page, required while a ceiling is
+//     raised. Withdraw ends the Tracking consent and keeps the subscription.
 package newsletter
 
 import (
@@ -46,6 +48,10 @@ var (
 	ErrExpiredLink       = errors.New("the link has expired")
 	ErrInvalidIssue      = errors.New("the issue is not valid")
 	ErrNoUnsubscribeLink = errors.New("the issue HTML has no {{ unsubscribe_url }}")
+	// ErrNoPreferencesLink is an issue saved without its Preferences page link while a
+	// Tracking ceiling is raised: no tracked issue may reach a Subscriber without a way to
+	// Withdraw.
+	ErrNoPreferencesLink = errors.New("the issue HTML has no {{ preferences_url }}, required while tracking is on")
 	// ErrTrackingOff is tracking asked for while every Tracking ceiling is `off`.
 	ErrTrackingOff = errors.New("tracking was asked for, but this newsletter tracks nothing")
 )
@@ -234,6 +240,7 @@ func (s *Service) Cleanup(ctx context.Context) (int64, error) {
 var (
 	slugPattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	unsubscribePattern = regexp.MustCompile(`\{\{ *unsubscribe_url *\}\}`)
+	preferencesPattern = regexp.MustCompile(`\{\{ *preferences_url *\}\}`)
 )
 
 // SaveIssue stores an issue as the site rendered it, ready for its test send.
@@ -245,11 +252,14 @@ func (s *Service) SaveIssue(ctx context.Context, slug, subject, html string) (*s
 	if !unsubscribePattern.MatchString(html) {
 		return nil, ErrNoUnsubscribeLink
 	}
+	if s.Ceiling.Raised() && !preferencesPattern.MatchString(html) {
+		return nil, ErrNoPreferencesLink
+	}
 	return s.Store.SaveDraft(ctx, slug, subject, html, s.Now())
 }
 
-// TestSend mails the issue to TestRecipient only. Its unsubscribe link is a dummy that
-// unsubscribes nobody.
+// TestSend mails the issue to TestRecipient only. Its unsubscribe and preferences links are
+// dummies that act on nobody.
 func (s *Service) TestSend(ctx context.Context, slug string) error {
 	issue, err := s.Store.Issue(ctx, slug)
 	if err != nil {
@@ -263,6 +273,7 @@ func (s *Service) TestSend(ctx context.Context, slug string) error {
 		HTML:    issue.HTML,
 		Recipients: []kannon.Recipient{{Email: s.TestRecipient, Fields: map[string]string{
 			"token": "test", "unsubscribe_url": s.unsubscribeURL("test"),
+			"preferences_url": s.preferencesURL("test"),
 		}}},
 		UnsubscribeURL: s.PublicURL + "/unsubscribe?token={{ token }}",
 	})
@@ -298,6 +309,7 @@ func (s *Service) Send(ctx context.Context, slug string) (*store.Issue, error) {
 	for i, r := range recipients {
 		to[i] = kannon.Recipient{Email: r.Email, Fields: map[string]string{
 			"token": r.UnsubscribeToken, "unsubscribe_url": s.unsubscribeURL(r.UnsubscribeToken),
+			"preferences_url": s.preferencesURL(r.UnsubscribeToken),
 		}}
 		if raised {
 			p := tracking.Effective(r.Consent, s.Ceiling)
